@@ -43,9 +43,14 @@ To have `ricalc` in its own folder, independent of the source:
 
     dotnet publish src\RelativeIllumination.Cli -c Release -o C:\Tools\ricalc
 
-and add `C:\Tools\ricalc` to your PATH. The folder is self-contained: the program, its libraries
-and the glass catalogs (`catalogs\Glass`). The Python environment for the Optiland cross-check is
-not copied; see section 10.
+and add `C:\Tools\ricalc` to your PATH. The folder holds the program, its libraries and the
+glass catalogs (`catalogs\Glass`); keep the catalogs beside `ricalc.exe`. It still needs the
+.NET 8 runtime. For a copy that needs no .NET installed, publish it self-contained as a single
+file - the catalogs are still copied beside it:
+
+    dotnet publish src\RelativeIllumination.Cli -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -o C:\Tools\ricalc
+
+The Python environment for the Optiland cross-check is not copied by either; see section 10.
 
 ## 4. A first run
 
@@ -249,7 +254,7 @@ and prints a table ready to plot. See [the macro guide](../macros/README.md).
 |---|---|
 | `error: Lens file not found.` | check the path; put quotes around a name with spaces |
 | `WARNING  glass not found, treated as air: ...` | a glass is in none of the catalogs. Add its catalog with `--glass DIR`, or change the glass in the file. The results are wrong until it is fixed |
-| `No glass catalogs found` | the `catalogs\Glass` folder is not beside the program; rebuild, or use `--glass` |
+| `No glass catalogs found` | the `catalogs\Glass` folder is not beside the program; rebuild or republish, use `--glass DIR`, or set the environment variable `RICALC_GLASS_DIR` to a folder of `.agf` files |
 | `the chief ray cannot be aimed at the stop centre` | at that field no ray reaches the centre of the stop - usually a field beyond what the lens can image. That field is left out |
 | A surface type or coordinate break is refused | the lens has something `ricalc` does not model; it refuses rather than approximating |
 | `fwd-rev` of 10⁻³ or more | see section 5: trust RI rev |
