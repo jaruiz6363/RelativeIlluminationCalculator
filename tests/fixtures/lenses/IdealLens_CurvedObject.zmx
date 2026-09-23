@@ -1,0 +1,33 @@
+VERS 140228 258 40400
+MODE SEQ
+NOTE 0 Ideal thin lens f = 100, stop on the lens, EPD 20 (f/5), at unit-ish conjugates: the object sits
+NOTE 0 200 mm in front and the flat image 200 mm behind. The OBJECT SURFACE IS CURVED, radius -300, so a
+NOTE 0 field point of height h lies at its sag, not on the vertex plane, and its image is out of focus on
+NOTE 0 the flat image plane. For a Lambertian object that does not matter: the illuminance at an image
+NOTE 0 point is set by the cone of directions reaching it, which here is the cone to the stop disk.
+NOTE 0 Exact answer: Foote's disk formula at the chief ray's image height (Gardner Eq. 7).
+NOTE 0 Fields are object heights 0 / 30 / 60 mm.
+TITL Ideal lens, curved object surface
+UNIT MM X W X CM MR CPMM
+ENPD 20
+FTYP 1 0 3 1 0 0 0 0 0
+RAIM 0 2 1 1 0 1 0 0 0 1
+XFLN 0 0 0
+YFLN 0 30 60
+FWGN 1 1 1
+WAVM 1 0.55 1
+PWAV 1
+SURF 0
+  TYPE STANDARD
+  CURV -0.0033333333333333335
+  DISZ 200
+SURF 1
+  STOP
+  TYPE PARAXIAL
+  PARM 1 100
+  PARM 2 1
+  DISZ 200
+SURF 2
+  TYPE STANDARD
+  CURV 0
+  DISZ 0

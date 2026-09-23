@@ -1,0 +1,17 @@
+bin/
+obj/
+*.user
+.vs/
+.idea/
+artifacts/
+logs/
+*.log
+.claude/settings.local.json
+~$*
+
+# OpticStudio writes a session file beside every lens it opens.
+*.ZDA
+*.zda
+
+# The embedded Python that tools/setup-python.ps1 installs Optiland into.
+python-embed/

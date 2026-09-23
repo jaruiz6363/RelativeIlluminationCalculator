@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Test fixtures travel with the repository, so a fresh clone can run the suite. -->
+    <None Include="../fixtures/**/*" CopyToOutputDirectory="PreserveNewest" LinkBase="fixtures" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\RelativeIllumination.Core\RelativeIllumination.Core.csproj" />
+    <ProjectReference Include="..\..\src\RelativeIllumination.IO\RelativeIllumination.IO.csproj" />
+    <ProjectReference Include="..\..\src\RelativeIllumination.Cli\RelativeIllumination.Cli.csproj" />
+    <ProjectReference Include="..\..\src\RelativeIllumination.Optiland\RelativeIllumination.Optiland.csproj" />
+  </ItemGroup>
+</Project>

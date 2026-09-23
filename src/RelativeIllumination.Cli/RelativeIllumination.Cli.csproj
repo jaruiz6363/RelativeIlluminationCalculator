@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>ricalc</AssemblyName>
+    <RootNamespace>RelativeIllumination.Cli</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\RelativeIllumination.Core\RelativeIllumination.Core.csproj" />
+    <ProjectReference Include="..\RelativeIllumination.IO\RelativeIllumination.IO.csproj" />
+    <ProjectReference Include="..\RelativeIllumination.Optiland\RelativeIllumination.Optiland.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The glass catalogs travel with the program; without them every glass is air. -->
+    <None Include="..\..\catalogs\Glass\*.AGF" CopyToOutputDirectory="PreserveNewest" LinkBase="catalogs\Glass" />
+  </ItemGroup>
+</Project>

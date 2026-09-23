@@ -1,0 +1,30 @@
+VERS 140228 258 40400
+MODE SEQ
+NOTE 0 Ideal thin lens f = 100, stop on the lens, EPD 20 (f/5), object at infinity, fields 0/15/30 deg.
+NOTE 0 Image surface: sphere of radius 200 mm, vertex at the paraxial focus.
+NOTE 0 Exact reference for relative illumination ON A CURVED IMAGE SURFACE: traced back from the image
+NOTE 0 point, only the stop disk limits the cone, so the illuminance is the cone to that disk taken about
+NOTE 0 the surface normal. See tests/RelativeIllumination.Tests/ExactTests.cs and macros/README.md.
+TITL Ideal lens, curved image R 200
+UNIT MM X W X CM MR CPMM
+ENPD 20
+FTYP 0 0 3 1 0 0 0 0 0
+XFLN 0 0 0
+YFLN 0 15 30
+FWGN 1 1 1
+WAVM 1 0.55 1
+PWAV 1
+SURF 0
+  TYPE STANDARD
+  CURV 0
+  DISZ INFINITY
+SURF 1
+  STOP
+  TYPE PARAXIAL
+  PARM 1 100
+  PARM 2 1
+  DISZ 100
+SURF 2
+  TYPE STANDARD
+  CURV 0.0050000000000000001
+  DISZ 0

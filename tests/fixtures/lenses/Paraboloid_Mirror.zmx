@@ -1,0 +1,32 @@
+VERS 140228 258 40400
+MODE SEQ
+NOTE 0 Paraboloidal mirror, focal length 200 (radius -400, conic -1), EPD 50 (f/4), stop on the mirror.
+NOTE 0 Object at infinity; the image sits 200 mm back along -z,
+NOTE 0 so the thickness after the mirror is negative, as a folded system's always is.
+NOTE 0 On axis the transmitted cone is exact: pi sin^2 a to the rim, at its own sag.
+NOTE 0 The obscured version of this mirror is built in code in ExactTests.
+TITL Paraboloidal mirror
+UNIT MM X W X CM MR CPMM
+ENPD 50
+FTYP 0 0 2 1 0 0 0 0 0
+XFLN 0 0 0
+YFLN 0 0.5
+FWGN 1 1
+WAVM 1 0.55 1
+PWAV 1
+SURF 0
+  TYPE STANDARD
+  CURV 0
+  DISZ INFINITY
+SURF 1
+  STOP
+  TYPE STANDARD
+  CURV -0.0025
+  CONI -1
+  DISZ -200
+  GLAS MIRROR 0 0 0 0 0
+  DIAM 25 1 0 0 1 ""
+SURF 2
+  TYPE STANDARD
+  CURV 0
+  DISZ 0

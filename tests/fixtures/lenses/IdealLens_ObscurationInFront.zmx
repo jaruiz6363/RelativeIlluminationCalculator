@@ -1,0 +1,36 @@
+VERS 140228 258 40400
+MODE SEQ
+NOTE 0 Ideal thin lens f = 100, stop on the lens, EPD 20 (f/5), object at infinity, flat image at the focus.
+NOTE 0 A central obscuration of radius 4 sits on a plane 20 mm IN FRONT of the lens, so its shadow on the
+NOTE 0 lens moves off axis by 20 tan(field): the chief ray is blocked below about 11.3 deg and passes above.
+NOTE 0 Exact answer: the cone from the image point to the lens disk minus the shifted shadow disk.
+NOTE 0 Real ray aiming is on (RAIM line copied from a file OpticStudio reports as aiming on).
+TITL Ideal lens, obscuration 20 mm in front
+UNIT MM X W X CM MR CPMM
+ENPD 20
+FTYP 0 0 3 1 0 0 0 0 0
+RAIM 0 2 1 1 0 1 0 0 0 1
+XFLN 0 0 0
+YFLN 0 15 30
+FWGN 1 1 1
+WAVM 1 0.55 1
+PWAV 1
+SURF 0
+  TYPE STANDARD
+  CURV 0
+  DISZ INFINITY
+SURF 1
+  TYPE STANDARD
+  CURV 0
+  DISZ 20
+  OBSC 0 4 0
+SURF 2
+  STOP
+  TYPE PARAXIAL
+  PARM 1 100
+  PARM 2 1
+  DISZ 100
+SURF 3
+  TYPE STANDARD
+  CURV 0
+  DISZ 0
