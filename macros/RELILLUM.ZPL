@@ -55,6 +55,18 @@
 !   The chief ray itself is aimed, by Newton iteration, at the centre of the real stop. It
 !   only fixes the image point Q'; it may itself be blocked, by an obscuration say.
 !
+! VIGNETTING FACTORS
+!
+!   OpticStudio's vignetting factors (VDX, VDY, VCX, VCY, VAN) reshape the normalised pupil: the
+!   unit circle RAYTRACE accepts no longer maps to the real stop but to an ellipse that
+!   approximates the vignetted beam. The real vignetted pupil is not an ellipse, so light outside
+!   it could not be traced and RI would come out low, silently. With RMVIG = 1 (the default) the
+!   factors are set to zero for the run, the surface apertures do the vignetting, and the factors
+!   are restored at the end. Their values are printed first, in case the macro is stopped before
+!   it can restore them. A lens whose vignetting is described ONLY by its factors - automatic
+!   semi-diameters everywhere - has none left once they are removed: give the vignetting surfaces
+!   fixed semi-diameters.
+!
 ! LIMITS
 !
 !   - There is no backward trace from the image point in ZPL, so the exact reverse method
@@ -95,6 +107,10 @@ nbis = 10
 maxcel = 40000
 ! Slots for traced rays (a prime; a field keeps about 60000 at most).
 nhash = 131071
+! 1: set the lens's vignetting factors to zero for this run and restore them at the end, as
+! OpticStudio's "Remove Vignetting Factors" does. 0: leave them, and the RI is wrong wherever
+! they are not zero (see VIGNETTING FACTORS above).
+rmvig = 1
 ! ---------------------------------------------------------------------------------
 
 eps = 1E-12
@@ -128,6 +144,45 @@ fdesc$ = "deg"
 IF (fldtyp > 0.5) THEN fdesc$ = "obj ht"
 IF (fldtyp > 1.5) THEN fdesc$ = "par img ht"
 IF (fldtyp > 2.5) THEN fdesc$ = "real img ht"
+
+! ---- vignetting factors: recorded, then removed for the run (see VIGNETTING FACTORS) --------
+nvfld = 0
+nfields = NFLD()
+IF ((rmvig == 1) & (nfields > 0))
+   DECLARE svdx, DOUBLE, 1, nfields
+   DECLARE svdy, DOUBLE, 1, nfields
+   DECLARE svcx, DOUBLE, 1, nfields
+   DECLARE svcy, DOUBLE, 1, nfields
+   DECLARE svan, DOUBLE, 1, nfields
+   FOR i = 1, nfields, 1
+      svdx(i) = FVDX(i)
+      svdy(i) = FVDY(i)
+      svcx(i) = FVCX(i)
+      svcy(i) = FVCY(i)
+      svan(i) = FVAN(i)
+      vsum = ABSO(svdx(i)) + ABSO(svdy(i)) + ABSO(svcx(i)) + ABSO(svcy(i)) + ABSO(svan(i))
+      IF (vsum > 0) THEN nvfld = nvfld + 1
+   NEXT
+   IF (nvfld > 0)
+      PRINT "Vignetting factors are set on the lens. They are removed for this run and restored"
+      PRINT "at the end; the surface apertures do the vignetting. Their values, in case the run is"
+      PRINT "stopped before it can restore them:"
+      PRINT "   Field      VDX       VDY       VCX       VCY       VAN"
+      FOR i = 1, nfields, 1
+         FORMAT 8.0 INT
+         PRINT i,
+         FORMAT 10.5
+         PRINT svdx(i), svdy(i), svcx(i), svcy(i), svan(i)
+         SETSYSTEMPROPERTY 105, i, 0
+         SETSYSTEMPROPERTY 106, i, 0
+         SETSYSTEMPROPERTY 107, i, 0
+         SETSYSTEMPROPERTY 108, i, 0
+         SETSYSTEMPROPERTY 109, i, 0
+      NEXT
+      UPDATE
+      PRINT " "
+   ENDIF
+ENDIF
 
 ! ---- the grid -------------------------------------------------------------------
 ! Lattice steps per coarse cell: two per finest cell, so every cell's centre is a node.
@@ -568,6 +623,26 @@ IF (nout > 0)
 ENDIF
 
 LABEL 900
+! Put back the vignetting factors removed at the start. Each value goes through a plain
+! variable, keeping array references out of the command's argument list.
+IF (nvfld > 0)
+   FOR i = 1, nfields, 1
+      vv = svdx(i)
+      SETSYSTEMPROPERTY 105, i, vv
+      vv = svdy(i)
+      SETSYSTEMPROPERTY 106, i, vv
+      vv = svcx(i)
+      SETSYSTEMPROPERTY 107, i, vv
+      vv = svcy(i)
+      SETSYSTEMPROPERTY 108, i, vv
+      vv = svan(i)
+      SETSYSTEMPROPERTY 109, i, vv
+   NEXT
+   UPDATE
+   PRINT " "
+   FORMAT 5.0 INT
+   PRINT "Vignetting factors restored on ", nvfld, " fields."
+ENDIF
 IF (ABSO(paraxmode) > eps) THEN PARAXIAL ON
 IF (ABSO(paraxmode) < eps) THEN PARAXIAL OFF
 

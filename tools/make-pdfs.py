@@ -23,10 +23,11 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Source (relative to the repository), and the PDF it becomes.
 DOCUMENTS = [
     ("README.md", "01 Relative Illumination Calculator.pdf"),
-    ("docs/method.md", "02 Method.pdf"),
-    ("macros/README.md", "03 RELILLUM macro for OpticStudio.pdf"),
-    ("docs/references.md", "04 References.pdf"),
-    ("docs/optiland-0.6.2.md", "05 Optiland 0.6.2 notes.pdf"),
+    ("docs/user-guide.md", "02 User Guide.pdf"),
+    ("docs/method.md", "03 Method.pdf"),
+    ("macros/README.md", "04 RELILLUM macro for OpticStudio.pdf"),
+    ("docs/references.md", "05 References.pdf"),
+    ("docs/optiland-0.6.2.md", "06 Optiland 0.6.2 notes.pdf"),
 ]
 
 BROWSERS = [

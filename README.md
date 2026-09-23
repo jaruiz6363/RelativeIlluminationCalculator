@@ -41,8 +41,9 @@ measured:
   local normal (Rimmer's Eq. 1). Curved object surfaces and finite conjugates are handled too.
   So are non-Lambertian sources (`--source cos:N`), weighted ray by ray.
 
-The method and the choices behind it are in [docs/method.md](docs/method.md). The papers are
-listed in [docs/references.md](docs/references.md).
+**To install and use it, see the [User Guide](docs/user-guide.md).** The method and the choices
+behind it are in [docs/method.md](docs/method.md); the papers are in
+[docs/references.md](docs/references.md).
 
 ## Lens files
 
@@ -76,11 +77,12 @@ bundled AGF catalogs in `catalogs/Glass`, or from `--glass DIR`.
 
 ## Building and testing
 
-    dotnet build
+    dotnet build -c Release
     dotnet test
-    dotnet run --project src/RelativeIllumination.Cli -- tests/fixtures/lenses/KingslakeDG.zmx
 
-The tests compare against exact answers, not against another program:
+Requirements, installation, and how to read the output are in the
+[User Guide](docs/user-guide.md). The tests compare against exact answers, not against another
+program:
 
 - Foote's disk irradiance (Gardner Eq. 7) for an ideal lens with the stop on the lens, both at
   infinite and at finite conjugate; with the stop behind the lens; and with a central obscuration.

@@ -34,6 +34,7 @@ At the top of the file:
 | `nbis` | 10 | bisections locating the boundary on a finest-level cell edge |
 | `maxcel` | 40000 | longest list of cells one level may hold |
 | `nhash` | 131071 | slots for the rays traced at one field |
+| `rmvig` | 1 | remove the lens's vignetting factors for the run, and restore them at the end |
 
 **Speed.** OpticStudio traces one ray per `RAYTRACE` call and, with real ray aiming, aims each one
 iteratively; about 1 ms per ray. The default grid traces 12,000-19,000 rays a field, so a field
@@ -81,6 +82,25 @@ the same light with aiming off, and says nothing:
 | OpticStudio analysis, real aiming | 0.8764 |
 | OpticStudio analysis, **aiming off** | **0.7794** |
 | This macro, aiming off | 0.7795, marked TRUNCATED |
+
+## Vignetting factors
+
+OpticStudio's vignetting factors (VDX, VDY, VCX, VCY, VAN) reshape the normalised pupil: the unit
+circle `RAYTRACE` accepts no longer maps to the real stop but to an ellipse that approximates the
+vignetted beam. The real vignetted pupil is not an ellipse - it is usually a cat's eye cut by
+two apertures - so light outside the ellipse could not be traced, and RI would come out low
+without warning.
+
+So, as OpticStudio's own analysis does with **Remove Vignetting Factors** checked, the macro
+removes them: with `rmvig = 1` (the default) it records each field's factors, prints them, sets
+them to zero for the run and restores them at the end. The surface apertures then do the
+vignetting, as they do in `ricalc`, which never reads vignetting factors. The values are printed
+first so that they can be re-entered if the run is stopped before it restores them.
+
+**A lens whose vignetting lives only in its factors**, with automatic semi-diameters on every
+surface, has no vignetting left once they are removed, and the macro will report the unvignetted RI.
+To model the vignetting, give the surfaces that clip the beam fixed semi-diameters (in the Lens
+Data Editor, set the semi-diameter solve to Fixed).
 
 ## How it works
 
@@ -134,6 +154,23 @@ The whole run took 207.6 s for 179,106 rays. For comparison, on the same lens an
 | `ricalc`, forward, one core | 0.03 s | 139,000 | 0.2 µs |
 | Optiland's rays, same algorithm | 1.1 s | 191,000 | 6 µs |
 | This macro in OpticStudio | 207.6 s | 179,106 | 1.16 ms |
+
+**With vignetting factors**, on `tests/fixtures/lenses/CookeTriplet with Vignetting.zmx` - fixed
+apertures on four surfaces - with OpticStudio's vignetting factors also set on the 20° field (VDY
+0.091, VCX 0.136, VCY 0.545: an ellipse about half the pupil's height). The macro removed them,
+measured, and restored them, and matched `ricalc`'s forward method at every field, to 1e-4 in RI
+and 0.001 in F/#eff; 11 fields in 191 s:
+
+| Field | `ricalc` RI | This macro | `ricalc` F/#eff | This macro |
+|---|---|---|---|---|
+| 0° | 1.0000 | 1.0000 | 3.992 | 3.992 |
+| 4° | 0.9575 | 0.9575 | 4.080 | 4.080 |
+| 8° | 0.8611 | 0.8611 | 4.302 | 4.302 |
+| 12° | 0.7048 | 0.7048 | 4.755 | 4.755 |
+| 16° | 0.5227 | 0.5227 | 5.521 | 5.522 |
+| 20° | 0.3333 | 0.3333 | 6.915 | 6.915 |
+
+OpticStudio's own analysis reads 0.9721, 0.7190 and 0.3441 at 4°, 12° and 20° on this lens.
 
 **Against the C# code.** The `.ZPL` text was also run through a small ZPL interpreter whose
 `RAYTRACE` is answered by Optiland, and compared with `ricalc`'s integrator on the same Optiland
@@ -197,5 +234,6 @@ prescription from [../docs/references.md](../docs/references.md).
   131,071 works. The exact cap is not known.
 - There is no recursion; `FOR` runs its body at least once even for an empty range; a block `IF`
   has no `THEN`; variable names are case-insensitive and may not be function names.
-- `TIMER` / `ETIM()` and `$TAB()` work (OpticStudio, 2026-09-23). `INDX()`, used for the
-  image-space index in F/#eff, has not yet been run there.
+- These all work (OpticStudio, 2026-09-23): `TIMER` / `ETIM()`, `$TAB()`, `INDX()`, `NFLD()`,
+  `FVDX()`..`FVAN()`, and `SETSYSTEMPROPERTY` codes 105-109 (a field's VDX, VDY, VCX, VCY, VAN)
+  followed by `UPDATE`.
