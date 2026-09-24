@@ -13,8 +13,8 @@ namespace RelativeIllumination.Tests;
 /// prescription, traced with Optiland's rays, measured by the forward method.
 ///
 /// <para>These tests need the embedded Python that <c>tools/setup-python.ps1</c> installs. A
-/// fresh clone does not have it, so they report that they did nothing rather than failing -
-/// and say so in the test output, so a green run cannot quietly mean "never ran".</para>
+/// fresh clone does not have it, so they are marked skipped, with the reason, rather than failing
+/// or passing - so the summary cannot quietly count a check that never ran.</para>
 /// </summary>
 public class OptilandTests
 {
@@ -22,18 +22,9 @@ public class OptilandTests
 
     public OptilandTests(ITestOutputHelper output) { _output = output; }
 
-    private bool Ready()
-    {
-        if (PythonEnvironment.IsReady) return true;
-        _output.WriteLine("NOT RUN: " + PythonEnvironment.SetupHint);
-        return false;
-    }
-
-    [Fact]
+    [OptilandFact]
     public void OptilandRaysReproduceTheForwardMethodOnAVignettedLens()
     {
-        if (!Ready()) return;
-
         var ts = Designs.Open("CookeTriplet with Vignetting.zmx");
         var optic = OptilandOptic.Build(ts);
 
@@ -64,11 +55,9 @@ public class OptilandTests
         }
     }
 
-    [Fact]
+    [OptilandFact]
     public void IdealLensOnACurvedImage()
     {
-        if (!Ready()) return;
-
         // Optiland's "paraxial" surface is an ideal thin lens of focal length f, and its image
         // surface can be curved, so this lens - whose exact relative illumination is the cone to
         // the stop disk about the surface normal - can be measured with its rays too.
@@ -88,11 +77,9 @@ public class OptilandTests
         }
     }
 
-    [Fact]
+    [OptilandFact]
     public void ParaboloidalMirror()
     {
-        if (!Ready()) return;
-
         // A folded system: the thickness after the mirror is negative and the image sits at
         // z = -200. Optiland reflects on material "mirror" and keeps the same convention.
         var ts = Designs.Open("Paraboloid_Mirror.zmx");
@@ -112,11 +99,9 @@ public class OptilandTests
         }
     }
 
-    [Fact]
+    [OptilandFact]
     public void CurvedObjectSurface()
     {
-        if (!Ready()) return;
-
         // Optiland's object surface takes a radius like any other, so a field point sits at its
         // sag there too. The exact answer is the cone to the stop disk at the chief ray's image
         // height, which the defocus caused by the curved object does not change.
@@ -136,11 +121,9 @@ public class OptilandTests
         }
     }
 
-    [Fact]
+    [OptilandFact]
     public void CentralObscuration()
     {
-        if (!Ready()) return;
-
         // The chief ray is blocked and the pupil has a hole: the radial edge search this bridge
         // once used could not measure it, and said so. The shared integrator measures it like any
         // other pupil, from Optiland's rays, and must reach the exact outer-disk-minus-inner-disk.
@@ -181,5 +164,17 @@ public class OptilandTests
         var aspheric = Designs.IdealLensStopAtLens(100, 10, double.PositiveInfinity, 100);
         aspheric.Surfaces[2].AsphericCoefficients[1] = 1e-8;
         Assert.NotNull(OptilandOptic.Unsupported(aspheric));
+    }
+}
+
+/// <summary>
+/// A test that needs the embedded Python: skipped, with the setup hint as the reason, when it is
+/// not there. xunit 2 decides skipping when it discovers the test, not while it runs.
+/// </summary>
+public sealed class OptilandFactAttribute : FactAttribute
+{
+    public OptilandFactAttribute()
+    {
+        if (!PythonEnvironment.IsReady) Skip = PythonEnvironment.SetupHint;
     }
 }

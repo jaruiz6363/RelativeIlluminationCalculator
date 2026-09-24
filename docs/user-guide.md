@@ -267,5 +267,5 @@ and prints a table ready to plot. See [the macro guide](../macros/README.md).
 
 runs about 40 tests against exact answers (Gardner's disk formula for ideal lenses, with and
 without obscurations, at finite and infinite conjugates, on curved object and image surfaces) and
-published values (Rimmer's Topogon). The Optiland tests report `NOT RUN` rather than failing when
-the Python environment has not been set up.
+published values (Rimmer's Topogon). When the Python environment has not been set up, the five
+tests that need it are reported as skipped, with the reason, rather than failing.

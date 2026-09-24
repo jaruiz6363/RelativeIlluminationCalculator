@@ -189,7 +189,7 @@ it, because `python-embed\` is not kept in git.
     ricalc lens.zmx --optiland        # adds a column measured from Optiland's rays
 
 Without that setup, `--optiland` prints a note saying how to set it up, and the Optiland tests
-report `NOT RUN`. See section 10 of the [User Guide](docs/user-guide.md).
+are reported as skipped. See section 10 of the [User Guide](docs/user-guide.md).
 
 The lens is built inside Optiland from the prescription this program parsed - radii,
 thicknesses, conics, indices, stop and clipping apertures - not from Optiland's own file import,
