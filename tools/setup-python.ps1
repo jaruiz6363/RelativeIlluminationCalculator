@@ -2,8 +2,6 @@
 # Downloads an embeddable Python, bootstraps pip and installs optiland into it, so that
 # ricalc can be cross-checked against Optiland's own ray trace without a system Python.
 #
-# Adapted from tools/setup-python.ps1 in the OptilandNet repository.
-#
 #   .\tools\setup-python.ps1
 #
 # The environment lands in python-embed\ (gitignored). RICALC_PYTHON_HOME overrides where

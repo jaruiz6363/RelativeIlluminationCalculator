@@ -56,8 +56,7 @@ behind it are in [docs/method.md](docs/method.md); the papers are in
 | Optiland | `.json` |
 | LensHH-LT | `.lhlt` |
 
-The readers and glass catalogs come from AberrationCalculator; the embedded-Python setup for the
-Optiland cross-check follows [OptilandNet](https://github.com/jaruiz6363/OptilandNET). Glass is resolved from the
+The readers and glass catalogs come from AberrationCalculator. Glass is resolved from the
 bundled AGF catalogs in `catalogs/Glass`, or from `--glass DIR`.
 
 ## Options
@@ -180,8 +179,17 @@ OpticStudio rays, but with the pupil edge found by bisection instead of counted 
 
 ## Against Optiland
 
-    .\tools\setup-python.ps1          # embeddable Python + optiland, into python-embed\ (gitignored)
+This cross-check is optional; everything else in `ricalc` runs without Python. To use it, run
+the setup script once from the repository folder in PowerShell. It needs an internet connection:
+it downloads Python's embeddable package from python.org into `python-embed\` and installs
+Optiland into it with pip. Nothing is installed system-wide, and a fresh clone does not include
+it, because `python-embed\` is not kept in git.
+
+    .\tools\setup-python.ps1          # once: Python + optiland, into python-embed\
     ricalc lens.zmx --optiland        # adds a column measured from Optiland's rays
+
+Without that setup, `--optiland` prints a note saying how to set it up, and the Optiland tests
+report `NOT RUN`. See section 10 of the [User Guide](docs/user-guide.md).
 
 The lens is built inside Optiland from the prescription this program parsed - radii,
 thicknesses, conics, indices, stop and clipping apertures - not from Optiland's own file import,
@@ -232,7 +240,7 @@ The engineering record is in [docs/lenshh-lt-fix-guide.md](docs/lenshh-lt-fix-gu
 MIT, © 2026 Javier Ruiz. See [LICENSE](LICENSE) and [AUTHORS](AUTHORS): Javier Ruiz, Claude Code.
 
 The lens-file readers, glass catalogs and paraxial trace were copied from
-[AberrationCalculator](https://github.com/jaruiz6363/AberrationCalculator); the embedded-Python
-setup follows [OptilandNet](https://github.com/jaruiz6363/OptilandNET). Neither is a dependency:
-the only build dependency outside the .NET SDK is the `pythonnet` package, and the `optiland`
-Python package is needed only for `--optiland`.
+[AberrationCalculator](https://github.com/jaruiz6363/AberrationCalculator), which is not a
+dependency. The only build dependency outside the .NET SDK is the `pythonnet` package. Python
+and the `optiland` package are needed only for `--optiland`, and `tools\setup-python.ps1`
+installs them into the repository folder.

@@ -6,10 +6,8 @@ namespace RelativeIllumination.Optiland;
 /// <summary>
 /// Finds the embedded Python that <c>tools/setup-python.ps1</c> installs Optiland into.
 ///
-/// <para>The layout and the lookup are taken from the OptilandNet repository
-/// (jaruiz6363/OptilandNET, <c>src/OptilandNet.Core/Engine/PythonEnvironmentSetup.cs</c>): an
-/// embeddable Python unpacked into <c>python-embed/</c> with pip bootstrapped and optiland
-/// installed, found by walking up from the assembly or the working directory.</para>
+/// <para>An embeddable Python unpacked into <c>python-embed/</c> with pip bootstrapped and
+/// optiland installed, found by walking up from the assembly or the working directory.</para>
 /// </summary>
 public static class PythonEnvironment
 {

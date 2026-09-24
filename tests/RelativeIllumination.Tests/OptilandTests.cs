@@ -106,8 +106,9 @@ public class OptilandTests
         for (int k = 0; k < fields.Length; k++)
         {
             Assert.True(theirs[k].Ok, theirs[k].Failure);
-            Assert.True(Math.Abs(theirs[k].RelativeIllumination - mine[k].Reverse!.RelativeIllumination) < 1e-3,
-                $"{fields[k]} deg: optiland {theirs[k].RelativeIllumination:F4} vs {mine[k].Reverse.RelativeIllumination:F4}");
+            var reverse = mine[k].Reverse!;
+            Assert.True(Math.Abs(theirs[k].RelativeIllumination - reverse.RelativeIllumination) < 1e-3,
+                $"{fields[k]} deg: optiland {theirs[k].RelativeIllumination:F4} vs {reverse.RelativeIllumination:F4}");
         }
     }
 
