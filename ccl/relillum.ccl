@@ -1,0 +1,1059 @@
+/**********************************************************************
+* cmd relillum - relative illumination versus field, from OSLO's real
+* rays, by Rimmer's method, with Siew's effective F/#.
+*
+* Written by Javier Ruiz with Claude Code, September 2026. Companion to
+* ricalc and macros/RELILLUM.ZPL in C:\GIT\RelativeIlluminationCalculator;
+* it is the same algorithm, on OSLO's rays.
+*
+* REFERENCES
+*
+*   M. P. Rimmer, "Relative illumination calculations," Proc. SPIE 655,
+*   99-104 (1986). The method: illuminance from the projected solid angle
+*   of the cone at the image point, in direction cosines about the image
+*   normal (his Eq. 1), with each ray referred to the image point through
+*   the reference sphere (his Eq. 3, taken exactly here), and the effective
+*   F/numbers F#T, F#S = 1/(m2 - m1), 1/(l2 - l1).
+*
+*   R. H. Siew, "f/No. and the radiometry of image forming optical systems
+*   with non-circular aperture stops," Proc. SPIE 5867, 586701 (2005). The
+*   effective F/#: sqrt(pi / (4 n'^2 PSA)), the F/# of a circular pupil
+*   giving the same illuminance.
+*
+* WHAT IT COMPUTES
+*
+*   The illuminance at an image point is proportional to the projected
+*   solid angle of the cone arriving there: the AREA of the pupil in
+*   image-space direction cosines, measured about the image-surface
+*   normal (Rimmer, Proc. SPIE 655, 99, 1986). Relative illumination is
+*   that area at a field point over the largest such area.
+*
+*   The pupil is covered by a square grid of NBASE x NBASE cells in
+*   OSLO's fractional pupil coordinates FX, FY. A cell whose four corners
+*   and centre all pass is taken whole. A cell that is partly blocked, OR
+*   NEXT TO ONE, is split in four, NDEPTH times; at the finest level the
+*   boundary is found on each cut edge by NBIS bisections, and the passing
+*   part of the cell is a polygon on those crossings. A pupil with a hole,
+*   several pieces or pointed tips is measured as it is.
+*
+*   Every ray is referred to the image point Q' through the reference
+*   sphere centred on Q' and passing through the axial exit pupil (Rimmer
+*   Eq. 3, taken exactly), and expressed in direction cosines about the
+*   image-surface normal at Q' (Rimmer Eq. 1).
+*
+* WHICH RAYS COUNT
+*
+*   A ray counts if OSLO traces it to the image with aperture checking on
+*   - a ray blocked by a checked aperture and a ray that misses a surface
+*   both come back with nothing written - AND it crosses the stop inside
+*   the stop radius. The stop radius is where the real axial marginal ray
+*   (FBY 0, FY 1) crosses the stop, so the axial beam is the one EBR
+*   describes; a stop whose aperture is not marked checked still clips.
+*
+*   OSLO traces pupil coordinates beyond 1, so nothing limits the grid to
+*   the unit circle: it starts at +-1.1 and, if a passing ray lands on its
+*   edge, the field is measured again on a grid 1.5 times wider.
+*
+* RUNNING IT
+*
+*   relillum                       10 field steps, 16/3/10 grid, current wavelength
+*   relillum 10 32 3 12            a finer grid, slower (32/3 is the most that fits)
+*   relillum 10 16 3 10 2          at wavelength 2
+*   relillum 10 16 3 10 0 1        and also write the report file
+*
+*   The text window shows the setup, progress and the table, and the
+*   graphics window RI against field. The sixth parameter, 1, also writes
+*   a fuller report to RL_REPORT (below): the setup, rays and time per
+*   field, notes on the columns, and the table tab-delimited with more
+*   digits. Change RL_REPORT to a folder that exists on your machine; if
+*   it cannot be written, relillum says so and carries on without it.
+*   Field steps are equal in field ANGLE for an
+*   object at infinity (as ricalc's), equal in object height otherwise.
+*
+* LIMITS
+*
+*   - Forward rays only: no backward trace from the image point.
+*   - Monochromatic; no transmission weighting; a Lambertian object.
+*   - Rotationally symmetric, sequential. The image normal is taken from
+*     the image surface's curvature and conic.
+*   - Memory: CCL's global storage is small, so the grid is at most
+*     RL_MAXLAT nodes a side and a level at most RL_MAXCEL cells.
+**********************************************************************/
+
+#define RL_REPORT   "C:/GIT/RelativeIlluminationCalculator/ccl/relillum.txt"
+#define RL_MAXLAT   513
+#define RL_MAXCEL   20000
+#define RL_MAXFLD   101
+
+int rl_nfd    {prompt = "Field steps from the axis to full field", lolim = 1, hilim = 100, default(noquery) = 10}
+int rl_nbase  {prompt = "Coarse cells along each side of the pupil", lolim = 2, hilim = 64, default(noquery) = 16}
+int rl_ndepth {prompt = "Times a boundary cell may be split in four", lolim = 0, hilim = 6, default(noquery) = 3}
+int rl_nbis   {prompt = "Bisections locating the pupil boundary", lolim = 1, hilim = 30, default(noquery) = 10}
+int rl_wave   {prompt = "Wavelength number (0 = the current one)", lolim = 0, hilim = 10, default(noquery) = 0}
+int rl_file   {prompt = "Also write the report file RL_REPORT (0 = no, 1 = yes)", lolim = 0, hilim = 1, default(noquery) = 0}
+
+static char   rl_ns[RL_MAXLAT][RL_MAXLAT];  // node (j, i) this pass: 0 untraced, 1 passes, 2 blocked
+static int    rl_cur[RL_MAXCEL];   // cells of this level, by lower-left node
+static int    rl_nxt[RL_MAXCEL];   // cells of the next level
+static int    rl_nlat, rl_nl1;     // lattice steps, and nodes, along a side
+static int    rl_depth, rl_bis;    // copies of the settings, for the helpers
+static double rl_w, rl_step;       // grid half-width in FX, FY, and lattice step
+static int    rl_grow;             // a passing node on the grid's edge: widen and redo
+static int    rl_novfl;            // a level needed more than RL_MAXCEL cells
+static int    rl_row, rl_nrows;    // spreadsheet buffer base row; rows a full trace fills
+static double rl_srad2;            // stop radius squared, with a hair of margin
+static int    rl_tele;             // exit pupil at infinity: no reference-sphere correction
+static double rl_msign;            // +1, or -1 after an odd number of reflections: the sign of M
+static double rl_zxp;              // axial exit pupil, from the image surface
+static double rl_qx, rl_qy, rl_qz; // Q', the chief ray on the image surface
+static double rl_cra;              // chief ray angle to the image normal, degrees
+static double rl_ax, rl_ay, rl_az; // e1 of the frame about the image normal
+static double rl_bx, rl_by, rl_bz; // e2
+static double rl_rx, rl_ry, rl_rz, rl_rref2;  // Q' to E', and the sphere's radius squared
+static double rl_tu, rl_tv;        // mapped direction of the last ray that passed
+static int    rl_lastk;            // the node rl_tu, rl_tv belong to, or -1
+static double rl_umin, rl_umax, rl_vmin, rl_vmax;
+static double rl_arc;              // projected solid angle of this field
+static int    rl_nray;
+static int    rl_cpass0;           // whether a cell's first corner passes
+static int    rl_err, rl_errno;
+static int    rl_bi[4], rl_bj[4], rl_bp[4], rl_xh[4];
+static double rl_bu[4], rl_bv[4], rl_xu[4], rl_xv[4];
+static int    rl_ccp;
+static double rl_ccu, rl_ccv;
+static double rl_pu[8], rl_pv[8];
+static int    rl_npg;
+static int    rl_fh;               // the report file
+static int    rl_wf;               // 1 when the report file was asked for and opened
+static char   rl_ehsav[50];        // the error handler in place before relillum
+static double rl_trr3[6];          // the reference ray's YC, XC, YFS, XFS, OPL, reference sphere radius
+static double rl_ofd[RL_MAXFLD], rl_ohy[RL_MAXFLD], rl_oht[RL_MAXFLD], rl_ocra[RL_MAXFLD];
+static double rl_oac[RL_MAXFLD], rl_ofnt[RL_MAXFLD], rl_ofns[RL_MAXFLD], rl_ow[RL_MAXFLD];
+static double rl_gx[RL_MAXFLD], rl_gy[RL_MAXFLD];  // the curve for the graph
+
+void
+rl_eh(void)
+{
+	rl_errno = errno;
+	errno = 0;
+	rl_err = 1;
+}
+
+// The report is closed and reopened as it goes, so a run that stops part way leaves what it
+// had. If it cannot be reopened, the run carries on without it.
+static cmd
+rl_flush()
+{
+	fclose(rl_fh);
+	rl_fh = fopen(RL_REPORT, "at");
+	if (rl_fh <= 0)
+		rl_wf = 0;
+}
+
+// The reference ray at FBY, aimed by OSLO at the stop centre. 0 if OSLO cannot aim it. The
+// error handler is installed only around trr, the one call here that can fail with an error:
+// a traced ray that fails or is blocked just comes back with nothing written.
+static int
+rl_trr(double tr_fby)
+{
+	int kc;
+
+	rl_err = 0;
+	install_error_handler("rl_eh");
+	sbr(rl_row, 6, 1e20);
+	trr(tr_fby, 0.0, 0.0, 0.0, 0.0);
+	for (kc = 0; kc < 6; kc++)
+		rl_trr3[kc] = ssb(3, kc + 1);
+	sbr(-rl_row, 0);
+	install_error_handler(rl_ehsav);
+	return (!rl_err);
+}
+
+// The ray at pupil (FX, FY), traced with the current aperture checking. 1 if it reaches the
+// image and crosses the stop inside the stop radius; then rl_tu, rl_tv are its direction,
+// referred to Q' through the reference sphere, in the frame about the image normal.
+static int
+rl_pass(double ps_fx, double ps_fy)
+{
+	int    ir, irs, iri, isrf, ok;
+	double stx, sty, ppx, ppy, ppz, dl, dm, dn, kx, ky, kz;
+	double wx, wy, wz, bdot, cq, dsc, sdq, tta, ttb;
+	double xax, xay, xaz, xbx, xby, xbz, pja, pjb, klen;
+
+	rl_nray++;
+	sbr(rl_row, rl_nrows, 1e20);
+	// The standard form, with surface numbers in column 7: a ray that fails or is blocked comes
+	// back with nothing written and no error. The image row's YANG and XANG give its direction.
+	trace_ray(std, loc, all, ps_fy, ps_fx, yes);
+	irs = 0;
+	iri = 0;
+	for (ir = 1; ir <= rl_nrows; ir++)
+	{
+		if (ssb(ir, 7) < 1e19)
+		{
+			isrf = rint(ssb(ir, 7));
+			if (isrf == ast)
+				irs = ir;
+			if (isrf == ims)
+				iri = ir;
+		}
+	}
+	ok = 0;
+	if (irs > 0 && iri > 0)
+	{
+		sty = ssb(irs, 1);
+		stx = ssb(irs, 2);
+		if (stx*stx + sty*sty <= rl_srad2)
+		{
+			ok = 1;
+			ppy = ssb(iri, 1);
+			ppx = ssb(iri, 2);
+			ppz = ssb(iri, 3);
+			// YANG, XANG: the angles whose tangents are L/M and K/M. They do not carry the sign of
+			// M, which is negative after an odd number of reflections.
+			dm = tan(ssb(iri, 4)*pi/180.0);
+			dl = tan(ssb(iri, 5)*pi/180.0);
+			dn = rl_msign/sqrt(1.0 + dl*dl + dm*dm);
+			dm = dm*dn;
+			dl = dl*dn;
+		}
+	}
+	sbr(-rl_row, 0);
+	if (!ok)
+		return (0);
+
+	kx = dl;
+	ky = dm;
+	kz = dn;
+	if (!rl_tele)
+	{
+		// Where the ray line crosses the sphere about Q' through E': the crossing on E''s side,
+		// and the direction from there TO Q'.
+		wx = ppx - rl_qx;
+		wy = ppy - rl_qy;
+		wz = ppz - rl_qz;
+		bdot = wx*dl + wy*dm + wz*dn;
+		cq = wx*wx + wy*wy + wz*wz - rl_rref2;
+		dsc = bdot*bdot - cq;
+		if (dsc >= 0.0)
+		{
+			sdq = sqrt(dsc);
+			tta = -bdot - sdq;
+			ttb = -bdot + sdq;
+			xax = ppx + tta*dl - rl_qx;
+			xay = ppy + tta*dm - rl_qy;
+			xaz = ppz + tta*dn - rl_qz;
+			xbx = ppx + ttb*dl - rl_qx;
+			xby = ppy + ttb*dm - rl_qy;
+			xbz = ppz + ttb*dn - rl_qz;
+			pja = xax*rl_rx + xay*rl_ry + xaz*rl_rz;
+			pjb = xbx*rl_rx + xby*rl_ry + xbz*rl_rz;
+			if (pja >= pjb)
+			{
+				kx = -xax;
+				ky = -xay;
+				kz = -xaz;
+			}
+			else
+			{
+				kx = -xbx;
+				ky = -xby;
+				kz = -xbz;
+			}
+			klen = sqrt(kx*kx + ky*ky + kz*kz);
+			kx = kx/klen;
+			ky = ky/klen;
+			kz = kz/klen;
+			if (kx*dl + ky*dm + kz*dn <= 0.0)
+			{
+				kx = dl;
+				ky = dm;
+				kz = dn;
+			}
+		}
+	}
+	rl_tu = kx*rl_ax + ky*rl_ay + kz*rl_az;
+	rl_tv = kx*rl_bx + ky*rl_by + kz*rl_bz;
+	if (rl_tu < rl_umin)
+		rl_umin = rl_tu;
+	if (rl_tu > rl_umax)
+		rl_umax = rl_tu;
+	if (rl_tv < rl_vmin)
+		rl_vmin = rl_tv;
+	if (rl_tv > rl_vmax)
+		rl_vmax = rl_tv;
+	return (1);
+}
+
+// Whether lattice node (i, j) passes, tracing it the first time it is asked for.
+static int
+rl_node(int nd_i, int nd_j)
+{
+	int nd_k, nd_p;
+
+	nd_k = nd_j*rl_nl1 + nd_i;
+	if (rl_ns[nd_j][nd_i] == 0)
+	{
+		nd_p = rl_pass(-rl_w + nd_i*rl_step, -rl_w + nd_j*rl_step);
+		if (nd_p)
+		{
+			rl_ns[nd_j][nd_i] = 1;
+			rl_lastk = nd_k;
+			if (nd_i == 0 || nd_j == 0 || nd_i == rl_nlat || nd_j == rl_nlat)
+				rl_grow = 1;
+		}
+		else
+		{
+			rl_ns[nd_j][nd_i] = 2;
+			rl_lastk = -1;
+		}
+	}
+	return (rl_ns[nd_j][nd_i] == 1);
+}
+
+// As rl_node, and when the node passes, its mapped direction in rl_tu, rl_tv - traced again
+// unless it is the ray just traced. Only a byte is kept per node; CCL's memory is small.
+static int
+rl_nodeuv(int nu_i, int nu_j)
+{
+	int nu_k, nu_p;
+
+	nu_k = nu_j*rl_nl1 + nu_i;
+	if (!rl_node(nu_i, nu_j))
+		return (0);
+	if (rl_lastk != nu_k)
+	{
+		// Traced again for rl_tu, rl_tv; it is known to pass.
+		nu_p = rl_pass(-rl_w + nu_i*rl_step, -rl_w + nu_j*rl_step);
+		rl_lastk = nu_k;
+	}
+	return (1);
+}
+
+// 1 if the corners and centre of cell (i, j), side s, disagree: the boundary crosses it.
+static int
+rl_cellcut(int cc_i, int cc_j, int cc_s)
+{
+	int cut, cpp, half;
+
+	cut = 0;
+	rl_cpass0 = rl_node(cc_i, cc_j);
+	cpp = rl_node(cc_i + cc_s, cc_j);
+	if (cpp != rl_cpass0)
+		cut = 1;
+	cpp = rl_node(cc_i + cc_s, cc_j + cc_s);
+	if (cpp != rl_cpass0)
+		cut = 1;
+	cpp = rl_node(cc_i, cc_j + cc_s);
+	if (cpp != rl_cpass0)
+		cut = 1;
+	// In CCL a/b is real even for integers, and an int parameter refuses a real: halve first.
+	half = cc_s/2;
+	cpp = rl_node(cc_i + half, cc_j + half);
+	if (cpp != rl_cpass0)
+		cut = 1;
+	return (cut);
+}
+
+// The corners of cell (i, j), side s, counter-clockwise from the lower left, and its centre.
+static cmd
+rl_loadcell(int lc_i, int lc_j, int lc_s)
+{
+	int kk, half;
+
+	rl_bi[0] = lc_i;
+	rl_bj[0] = lc_j;
+	rl_bi[1] = lc_i + lc_s;
+	rl_bj[1] = lc_j;
+	rl_bi[2] = lc_i + lc_s;
+	rl_bj[2] = lc_j + lc_s;
+	rl_bi[3] = lc_i;
+	rl_bj[3] = lc_j + lc_s;
+	for (kk = 0; kk < 4; kk++)
+	{
+		rl_bp[kk] = rl_nodeuv(rl_bi[kk], rl_bj[kk]);
+		rl_bu[kk] = 0.0;
+		rl_bv[kk] = 0.0;
+		if (rl_bp[kk])
+		{
+			rl_bu[kk] = rl_tu;
+			rl_bv[kk] = rl_tv;
+		}
+	}
+	half = lc_s/2;
+	rl_ccp = rl_nodeuv(lc_i + half, lc_j + half);
+	rl_ccu = 0.0;
+	rl_ccv = 0.0;
+	if (rl_ccp)
+	{
+		rl_ccu = rl_tu;
+		rl_ccv = rl_tv;
+	}
+}
+
+// Adds the shoelace area of the polygon rl_pu, rl_pv (rl_npg vertices).
+static cmd
+rl_polyarea()
+{
+	int kp, kq;
+	double pac;
+
+	pac = 0.0;
+	for (kp = 0; kp < rl_npg; kp++)
+	{
+		kq = kp + 1;
+		if (kq >= rl_npg)
+			kq = 0;
+		pac = pac + rl_pu[kp]*rl_pv[kq] - rl_pu[kq]*rl_pv[kp];
+	}
+	rl_arc = rl_arc + fabs(pac)/2.0;
+}
+
+// A cell that passes entirely: four triangles on the corners and the centre.
+static cmd
+rl_whole(int wh_i, int wh_j, int wh_s)
+{
+	int kk, km;
+	double tri;
+
+	rl_loadcell(wh_i, wh_j, wh_s);
+	for (kk = 0; kk < 4; kk++)
+	{
+		km = kk + 1;
+		if (km > 3)
+			km = 0;
+		tri = (rl_bu[km] - rl_bu[kk])*(rl_ccv - rl_bv[kk]) - (rl_ccu - rl_bu[kk])*(rl_bv[km] - rl_bv[kk]);
+		rl_arc = rl_arc + fabs(tri)/2.0;
+	}
+}
+
+// A finest-level cell the boundary crosses: each cut edge is bisected, and the passing part
+// of the cell becomes a polygon on the corners that pass and the crossings.
+static cmd
+rl_bcell(int bc_i, int bc_j, int bc_s)
+{
+	int ke, km, kpe, kfe, kb, kpv, issad;
+	double apx, apy, afx, afy, tpx, tpy;
+
+	rl_loadcell(bc_i, bc_j, bc_s);
+	for (ke = 0; ke < 4; ke++)
+	{
+		km = ke + 1;
+		if (km > 3)
+			km = 0;
+		rl_xh[ke] = 0;
+		if (rl_bp[ke] != rl_bp[km])
+		{
+			kpe = ke;
+			kfe = km;
+			if (rl_bp[ke] == 0)
+			{
+				kpe = km;
+				kfe = ke;
+			}
+			apx = -rl_w + rl_bi[kpe]*rl_step;
+			apy = -rl_w + rl_bj[kpe]*rl_step;
+			afx = -rl_w + rl_bi[kfe]*rl_step;
+			afy = -rl_w + rl_bj[kfe]*rl_step;
+			// Until a bisection ray passes, the passing corner is the best there is.
+			rl_xu[ke] = rl_bu[kpe];
+			rl_xv[ke] = rl_bv[kpe];
+			for (kb = 0; kb < rl_bis; kb++)
+			{
+				tpx = 0.5*(apx + afx);
+				tpy = 0.5*(apy + afy);
+				if (rl_pass(tpx, tpy))
+				{
+					apx = tpx;
+					apy = tpy;
+					rl_xu[ke] = rl_tu;
+					rl_xv[ke] = rl_tv;
+				}
+				else
+				{
+					afx = tpx;
+					afy = tpy;
+				}
+			}
+			rl_lastk = -1;
+			rl_xh[ke] = 1;
+		}
+	}
+
+	rl_npg = 0;
+	issad = 0;
+	if (rl_bp[0] == rl_bp[2] && rl_bp[1] == rl_bp[3] && rl_bp[0] != rl_bp[1])
+		issad = 1;
+	if (issad && !rl_ccp)
+	{
+		// Two corner pieces, disconnected through a blocked centre: a triangle each.
+		for (ke = 0; ke < 4; ke++)
+		{
+			if (rl_bp[ke])
+			{
+				kpv = ke - 1;
+				if (kpv < 0)
+					kpv = 3;
+				rl_pu[0] = rl_xu[kpv];
+				rl_pv[0] = rl_xv[kpv];
+				rl_pu[1] = rl_bu[ke];
+				rl_pv[1] = rl_bv[ke];
+				rl_pu[2] = rl_xu[ke];
+				rl_pv[2] = rl_xv[ke];
+				rl_npg = 3;
+				rl_polyarea();
+			}
+		}
+	}
+	else
+	{
+		for (ke = 0; ke < 4; ke++)
+		{
+			if (rl_bp[ke])
+			{
+				rl_pu[rl_npg] = rl_bu[ke];
+				rl_pv[rl_npg] = rl_bv[ke];
+				rl_npg++;
+			}
+			if (rl_xh[ke])
+			{
+				rl_pu[rl_npg] = rl_xu[ke];
+				rl_pv[rl_npg] = rl_xv[ke];
+				rl_npg++;
+			}
+		}
+		// Fewer than three vertices: only the centre passes, an island smaller than a finest
+		// cell, below the resolution asked for. It is dropped.
+		if (rl_npg >= 3)
+			rl_polyarea();
+	}
+}
+
+// The chief ray at FBY: Q', the frame about the image normal there, and the reference sphere.
+// 0 if OSLO cannot aim a reference ray at the stop centre, or the chief ray will not trace.
+static int
+rl_setup(double su_fby)
+{
+	int    ir, iri, isrf;
+	double cdl, cdm, cdn, nnx, nny, nnz, nlen, elen, ccos, cimg, kimg;
+
+	if (!rl_trr(su_fby))
+		return (0);
+
+	// The chief ray, for its geometry only: whether an aperture blocks it does not matter.
+	apck(off);
+	sbr(rl_row, rl_nrows, 1e20);
+	trace_ray(std, loc, all, 0.0, 0.0, yes);
+	iri = 0;
+	for (ir = 1; ir <= rl_nrows; ir++)
+	{
+		if (ssb(ir, 7) < 1e19)
+		{
+			isrf = rint(ssb(ir, 7));
+			if (isrf == ims)
+				iri = ir;
+		}
+	}
+	if (iri > 0)
+	{
+		rl_qy = ssb(iri, 1);
+		rl_qx = ssb(iri, 2);
+		rl_qz = ssb(iri, 3);
+		cdm = tan(ssb(iri, 4)*pi/180.0);
+		cdl = tan(ssb(iri, 5)*pi/180.0);
+		cdn = rl_msign/sqrt(1.0 + cdl*cdl + cdm*cdm);
+		cdm = cdm*cdn;
+		cdl = cdl*cdn;
+	}
+	sbr(-rl_row, 0);
+	apck(on);
+	if (iri == 0)
+		return (0);
+
+	// The frame about the image-surface normal at Q'.
+	cimg = cv[ims];
+	kimg = cc[ims];
+	nnx = -cimg*rl_qx;
+	nny = -cimg*rl_qy;
+	nnz = 1.0 - cimg*(1.0 + kimg)*rl_qz;
+	nlen = sqrt(nnx*nnx + nny*nny + nnz*nnz);
+	nnx = nnx/nlen;
+	nny = nny/nlen;
+	nnz = nnz/nlen;
+	if (nnx*cdl + nny*cdm + nnz*cdn < 0.0)
+	{
+		nnx = -nnx;
+		nny = -nny;
+		nnz = -nnz;
+	}
+	// e1 = x - (x.N) N, normalised; e2 = N x e1
+	rl_ax = 1.0 - nnx*nnx;
+	rl_ay = -nnx*nny;
+	rl_az = -nnx*nnz;
+	elen = sqrt(rl_ax*rl_ax + rl_ay*rl_ay + rl_az*rl_az);
+	rl_ax = rl_ax/elen;
+	rl_ay = rl_ay/elen;
+	rl_az = rl_az/elen;
+	rl_bx = nny*rl_az - nnz*rl_ay;
+	rl_by = nnz*rl_ax - nnx*rl_az;
+	rl_bz = nnx*rl_ay - nny*rl_ax;
+
+	// Reference sphere: centre Q', through E' = (0, 0, zxp) in the image-surface frame.
+	rl_rx = -rl_qx;
+	rl_ry = -rl_qy;
+	rl_rz = rl_zxp - rl_qz;
+	rl_rref2 = rl_rx*rl_rx + rl_ry*rl_ry + rl_rz*rl_rz;
+
+	ccos = nnx*cdl + nny*cdm + nnz*cdn;
+	if (ccos > 1.0)
+		ccos = 1.0;
+	rl_cra = acos(ccos)*180.0/pi;
+	return (1);
+}
+
+// The pupil of the current field, on a grid of half-width rl_w, refined toward its boundary.
+// Returns early, with rl_grow set, when a passing ray lands on the grid's edge.
+static cmd
+rl_measure()
+{
+	int nf, ncur, nnext, dep, kc, idx, ci, cj, csz, chh, owncut, ownpass, dosplit;
+	int ndi, ndj, nbi, nbj, nbok, ci0, cj0, kn, kn2;
+
+	nf = 2;
+	for (kn = 0; kn < rl_depth; kn++)
+		nf = nf*2;
+	for (kn = 0; kn < rl_nl1; kn++)
+		for (kn2 = 0; kn2 < rl_nl1; kn2++)
+			rl_ns[kn][kn2] = 0;
+	rl_lastk = -1;
+	rl_arc = 0.0;
+	rl_umin = 1e9;
+	rl_umax = -1e9;
+	rl_vmin = 1e9;
+	rl_vmax = -1e9;
+
+	ncur = 0;
+	for (cj0 = 0; cj0 < rl_nlat/nf; cj0++)
+		for (ci0 = 0; ci0 < rl_nlat/nf; ci0++)
+		{
+			rl_cur[ncur] = cj0*nf*rl_nl1 + ci0*nf;
+			ncur++;
+		}
+
+	csz = nf;
+	for (dep = 0; dep <= rl_depth; dep++)
+	{
+		chh = csz/2;
+		nnext = 0;
+		for (kc = 0; kc < ncur; kc++)
+		{
+			idx = rl_cur[kc];
+			cj = floor((idx + 0.5)/rl_nl1);
+			ci = idx - cj*rl_nl1;
+			owncut = rl_cellcut(ci, cj, csz);
+			ownpass = rl_cpass0;
+
+			// A cell is split when it, or any cell of its size beside it, is partly blocked:
+			// its own five rays cannot see a sliver of the pupil entering between them.
+			dosplit = 0;
+			if (dep < rl_depth)
+			{
+				if (owncut)
+					dosplit = 1;
+				for (ndj = -1; ndj <= 1; ndj++)
+					for (ndi = -1; ndi <= 1; ndi++)
+						if (!dosplit)
+						{
+							nbi = ci + ndi*csz;
+							nbj = cj + ndj*csz;
+							nbok = 1;
+							if (ndi == 0 && ndj == 0)
+								nbok = 0;
+							if (nbi < 0 || nbj < 0 || nbi + csz > rl_nlat || nbj + csz > rl_nlat)
+								nbok = 0;
+							if (nbok)
+								if (rl_cellcut(nbi, nbj, csz))
+									dosplit = 1;
+						}
+			}
+
+			if (dosplit)
+			{
+				if (nnext + 4 > RL_MAXCEL)
+					rl_novfl = 1;
+				else
+				{
+					rl_nxt[nnext] = idx;
+					rl_nxt[nnext + 1] = idx + chh;
+					rl_nxt[nnext + 2] = idx + chh*rl_nl1 + chh;
+					rl_nxt[nnext + 3] = idx + chh*rl_nl1;
+					nnext = nnext + 4;
+				}
+			}
+			else if (owncut)
+				rl_bcell(ci, cj, csz);
+			else if (ownpass)
+				rl_whole(ci, cj, csz);
+
+			if (rl_grow)
+				return;
+		}
+		for (kc = 0; kc < nnext; kc++)
+			rl_cur[kc] = rl_nxt[kc];
+		ncur = nnext;
+		csz = chh;
+	}
+}
+
+cmd
+relillum(int rl_nfd, int rl_nbase, int rl_ndepth, int rl_nbis, int rl_wave, int rl_file)
+// kwd:  relative illumination, Rimmer, Siew, effective F-number, vignetting
+// cat:  analysis
+{
+	int    i, kf, nout, kmax, att, wvn, wvn_sav, nfine, ir, irs, isrf, infobj, ok, fok, unres;
+	char   apck_sav, outp_sav;
+	char   fdesc[16];
+	char   gxlab[40];
+	double fby_sav, fbx_sav, fbz_sav, fyrf_sav, fxrf_sav;
+	double srad, rsr0, nimg, fby, fval, theta, amax, ric, fnt, fns, feff, t0, wnow;
+
+	// ---- settings and memory -------------------------------------------------------
+	nfine = 2;
+	for (i = 0; i < rl_ndepth; i++)
+		nfine = nfine*2;
+	rl_nlat = rl_nbase*nfine;
+	rl_nl1 = rl_nlat + 1;
+	if (rl_nl1 > RL_MAXLAT)
+	{
+		printf("relillum: a %d-cell grid split %d times needs %d nodes a side; at most %d fit.\n",
+			rl_nbase, rl_ndepth, rl_nl1, RL_MAXLAT);
+		printf("          Lower NBASE or NDEPTH (16 cells split 4 times, or 32 split 3, is the most).\n");
+		return;
+	}
+	if (ims < 2)
+	{
+		printf("relillum: the lens needs at least one optical surface.\n");
+		return;
+	}
+	rl_depth = rl_ndepth;
+	rl_bis = rl_nbis;
+
+	// The report file is optional, and a folder that cannot be written never stops the run.
+	rl_wf = 0;
+	if (rl_file)
+	{
+		rl_fh = fopen(RL_REPORT, "wt");
+		if (rl_fh > 0)
+			rl_wf = 1;
+		else
+			printf("relillum: cannot write %s; carrying on without the report file\n", RL_REPORT);
+	}
+
+	// ---- save what is changed, to restore at the end -------------------------------
+	outp_sav = char_pref(outp);
+	apck_sav = apck;
+	wvn_sav = +wav + 1;
+	fby_sav  = Trr_fby;
+	fbx_sav  = Trr_fbx;
+	fbz_sav  = Trr_fbz;
+	fyrf_sav = Trr_fyrf;
+	fxrf_sav = Trr_fxrf;
+	strcpy(rl_ehsav, error_handler);
+
+	if (rl_wave > 0 && rl_wave <= numw)
+		wav(rl_wave);
+	wvn = +wav + 1;
+	stp(outp, off);
+	rl_row = sbrow;
+	rl_nrows = ims + 2;
+	rl_novfl = 0;
+	rl_nray = 0;
+	nimg = fabs(rn[ims - 1][wvn]);
+	// Light travels toward -z after an odd number of reflections, as OSLO's own eval_aldis
+	// counts them: a reflecting surface (gltyp 4) or total internal reflection.
+	rl_msign = 1.0;
+	for (i = 1; i < ims; i++)
+		if (gltyp[i] == 4 || tir[i])
+			rl_msign = -rl_msign;
+	infobj = 0;
+	if (fabs(th[0]) > 1e8)
+		infobj = 1;
+	if (infobj)
+		strcpy(fdesc, "deg");
+	else
+		strcpy(fdesc, "obj ht");
+
+	// ---- the stop radius, from the real axial marginal ray, and the axial exit pupil ----
+	ok = 1;
+	if (!rl_trr(0.0))
+		ok = 0;
+	rsr0 = rl_trr3[5];
+	srad = 0.0;
+	if (ok)
+	{
+		apck(off);
+		sbr(rl_row, rl_nrows, 1e20);
+		trace_ray(std, loc, all, 1.0, 0.0, yes);
+		irs = 0;
+		for (ir = 1; ir <= rl_nrows; ir++)
+			if (ssb(ir, 7) < 1e19)
+			{
+				isrf = rint(ssb(ir, 7));
+				if (isrf == ast)
+					irs = ir;
+			}
+		if (irs > 0)
+			srad = sqrt(ssb(irs, 1)*ssb(irs, 1) + ssb(irs, 2)*ssb(irs, 2));
+		sbr(-rl_row, 0);
+		if (srad <= 0.0)
+			ok = 0;
+	}
+	rl_srad2 = srad*srad*(1.0 + 1e-9);
+	// OSLO's reference sphere radius on axis is the distance from the image to the exit
+	// pupil, positive when the pupil comes first; E' is at z = -R in the image frame.
+	rl_tele = 0;
+	rl_zxp = 0.0;
+	if (fabs(rsr0) > 1e10 || rsr0 > 0.99e20)
+		rl_tele = 1;
+	else
+		rl_zxp = -rsr0;
+
+	if (rl_wf)
+	{
+		fprintf(rl_fh, "RELILLUM - relative illumination from OSLO's real rays\n");
+		fprintf(rl_fh, "RI by Rimmer (Proc. SPIE 655, 1986); effective F/# by Siew (Proc. SPIE 5867, 2005)\n\n");
+		fprintf(rl_fh, "Wavelength             %d, %.6f um\n", wvn, wv[wvn]);
+		fprintf(rl_fh, "Stop surface           %d\n", ast);
+		fprintf(rl_fh, "Stop radius (real)     %.6f   (aperture on the stop surface %.6f)\n", srad, ap[ast]);
+		if (rl_tele)
+			fprintf(rl_fh, "Exit pupil             at infinity (telecentric): the correction vanishes\n");
+		else
+			fprintf(rl_fh, "Exit pupil from image  %.6f\n", rl_zxp);
+		if (infobj)
+			fprintf(rl_fh, "Max field              %.6f deg\n", +ang*180.0/pi);
+		else
+			fprintf(rl_fh, "Max field              %.6f obj ht\n", fabs(+obh));
+		if (fabs(cv[ims]) > 1e-12)
+			fprintf(rl_fh, "Image surface radius   %.6f\n", 1.0/cv[ims]);
+		fprintf(rl_fh, "Image-space index      %.6f\n", nimg);
+		fprintf(rl_fh, "Ray aiming             raim %d, wide-angle %d\n", raim, warm);
+		fprintf(rl_fh, "Pupil grid             %d cells, split %d times, %d bisections\n\n", rl_nbase, rl_ndepth, rl_nbis);
+		if (!ok)
+			fprintf(rl_fh, "The real axial marginal ray (FBY 0, FY 1) will not reach the stop. Is EBR set?\n");
+		else
+			fprintf(rl_fh, "Measuring each field:\n");
+		rl_flush();
+	}
+
+	// ---- each field ----------------------------------------------------------------
+	apck(on);
+	stp(outp, on);
+	printf("relillum - relative illumination by Rimmer's method, effective F/# by Siew's\n");
+	if (!ok)
+		printf("relillum: the real axial marginal ray (FBY 0, FY 1) will not reach the stop. Is EBR set?\n");
+	else
+	{
+		printf("  wavelength %d (%.5f um), stop surface %d, real stop radius %.4f\n", wvn, wv[wvn], ast, srad);
+		if (rl_tele)
+			printf("  exit pupil at infinity; pupil grid %d cells, split %d times, %d bisections\n",
+				rl_nbase, rl_ndepth, rl_nbis);
+		else
+			printf("  exit pupil %.4f from the image; pupil grid %d cells, split %d times, %d bisections\n",
+				rl_zxp, rl_nbase, rl_ndepth, rl_nbis);
+		printf("relillum: measuring %d fields\n", rl_nfd + 1);
+	}
+	stp(outp, off);
+	t0 = time();
+	nout = 0;
+	unres = 0;
+	wnow = 1.1;
+	for (kf = 0; kf <= rl_nfd; kf++)
+	{
+		if (!ok)
+			break;
+		// Equal steps in field angle for an object at infinity (FBY is the tangent's fraction,
+		// or the angle's in wide-angle mode), equal steps in object height otherwise.
+		if (infobj)
+		{
+			theta = kf*(+ang)/rl_nfd;
+			if (warm)
+				fby = theta/(+ang);
+			else
+				fby = tan(theta)/tan(+ang);
+			fval = theta*180.0/pi;
+		}
+		else
+		{
+			fby = (1.0*kf)/rl_nfd;
+			fval = fby*fabs(+obh);
+		}
+
+		fok = rl_setup(fby);
+		if (!fok)
+		{
+			stp(outp, on);
+			printf("relillum: %9.4f %s  the chief ray cannot be aimed at the stop centre; field left out\n", fval, fdesc);
+			stp(outp, off);
+			if (rl_wf)
+				fprintf(rl_fh, "  %9.4f %s   the chief ray cannot be aimed at the stop centre; field left out\n", fval, fdesc);
+		}
+		else
+		{
+			for (att = 0; att < 8; att++)
+			{
+				rl_w = wnow;
+				rl_step = 2.0*rl_w/rl_nlat;
+				rl_grow = 0;
+				rl_measure();
+				if (!rl_grow)
+					break;
+				wnow = wnow*1.5;
+			}
+			if (rl_grow)
+				unres = 1;
+			fnt = 0.0;
+			fns = 0.0;
+			if (rl_vmax > rl_vmin)
+				fnt = 1.0/(rl_vmax - rl_vmin);
+			if (rl_umax > rl_umin)
+				fns = 1.0/(rl_umax - rl_umin);
+			rl_ofd[nout] = fval;
+			rl_ohy[nout] = fby;
+			rl_oht[nout] = rl_qy;
+			rl_ocra[nout] = rl_cra;
+			rl_oac[nout] = rl_arc;
+			rl_ofnt[nout] = fnt;
+			rl_ofns[nout] = fns;
+			rl_ow[nout] = rl_w;
+			nout++;
+			stp(outp, on);
+			printf("relillum: %9.4f %s done, %.1f s\n", fval, fdesc, (time() - t0)/1000.0);
+			stp(outp, off);
+			if (rl_wf)
+			{
+				fprintf(rl_fh, "  %9.4f %s  done at %.1f s, %d rays so far (grid half-width %.3f)\n",
+					fval, fdesc, (time() - t0)/1000.0, rl_nray, rl_w);
+				rl_flush();
+			}
+		}
+	}
+
+	// ---- the table: RI relative to the brightest field measured --------------------
+	amax = 0.0;
+	kmax = 0;
+	for (i = 0; i < nout; i++)
+		if (rl_oac[i] > amax)
+		{
+			amax = rl_oac[i];
+			kmax = i;
+		}
+	if (amax <= 0.0)
+		nout = 0;
+
+	stp(outp, on);
+	if (nout > 0)
+	{
+		if (rl_wf)
+			fprintf(rl_fh, "\n     Field       hy      Img ht     CRA          RI     F#T     F#S   F/#eff\n");
+		printf("\n     Field       hy      Img ht     CRA          RI     F#T     F#S   F/#eff\n");
+		for (i = 0; i < nout; i++)
+		{
+			ric = rl_oac[i]/amax;
+			feff = sqrt(pi/(4.0*nimg*nimg*rl_oac[i]));
+			if (rl_wf)
+				fprintf(rl_fh, "%10.4f %8.4f %11.4f %7.2f %11.4f %7.2f %7.2f %8.3f\n",
+					rl_ofd[i], rl_ohy[i], rl_oht[i], rl_ocra[i], ric, rl_ofnt[i], rl_ofns[i], feff);
+			printf("%10.4f %8.4f %11.4f %7.2f %11.4f %7.2f %7.2f %8.3f\n",
+				rl_ofd[i], rl_ohy[i], rl_oht[i], rl_ocra[i], ric, rl_ofnt[i], rl_ofns[i], feff);
+		}
+		if (rl_ohy[kmax] > 0.0)
+		{
+			if (rl_wf)
+				fprintf(rl_fh, "\nThe brightest field is %.4f %s, not the axis; RI is relative to it.\n", rl_ofd[kmax], fdesc);
+			printf("\nThe brightest field is %.4f %s, not the axis; RI is relative to it.\n", rl_ofd[kmax], fdesc);
+		}
+	}
+	if (unres)
+	{
+		if (rl_wf)
+			fprintf(rl_fh, "\nWARNING: on some field the pupil still reached the edge of the widest grid tried.\n");
+		printf("\nWARNING: on some field the pupil still reached the edge of the widest grid tried.\n");
+	}
+	if (rl_novfl)
+	{
+		if (rl_wf)
+			fprintf(rl_fh, "\nWARNING: a level of the grid needed more than %d cells, and some were dropped.\n", RL_MAXCEL);
+		printf("\nWARNING: a level of the grid needed more than %d cells, and some were dropped.\n", RL_MAXCEL);
+		printf("Lower NBASE or NDEPTH and run again.\n");
+	}
+
+	if (rl_wf)
+	{
+		fprintf(rl_fh, "\nRI         illuminance relative to the brightest field; rays referred to the image\n");
+		fprintf(rl_fh, "           point through the reference sphere (Rimmer Eq. 3)\n");
+		fprintf(rl_fh, "CRA        chief ray angle to the image-surface normal, degrees\n");
+		fprintf(rl_fh, "F#T, F#S   Rimmer's effective F/numbers 1/(m2-m1), 1/(l2-l1)\n");
+		fprintf(rl_fh, "F/#eff     Siew's effective F/#, sqrt(pi / (4 n'^2 PSA))\n");
+	}
+
+	if (rl_wf && nout > 0)
+	{
+		fprintf(rl_fh, "\nTab-delimited, for plotting:\n\n");
+		fprintf(rl_fh, "Field (%s)\tRI\tF/#eff\n", fdesc);
+		for (i = 0; i < nout; i++)
+			fprintf(rl_fh, "%.4f\t%.6f\t%.4f\n", rl_ofd[i], rl_oac[i]/amax, sqrt(pi/(4.0*nimg*nimg*rl_oac[i])));
+		fprintf(rl_fh, "\nTotal time %.1f s for %d rays\n", (time() - t0)/1000.0, rl_nray);
+	}
+
+	// ---- the graph: RI against field, drawn the way OSLO's own chrshft draws its curve ----
+	if (nout > 1)
+	{
+		for (i = 0; i < nout; i++)
+		{
+			rl_gx[i] = rl_ofd[i];
+			rl_gy[i] = rl_oac[i]/amax;
+		}
+		if (infobj)
+			strcpy(gxlab, "Field angle (deg)");
+		else
+			strcpy(gxlab, "Object height");
+		stp(outp, off);
+		if (char_pref(graphics_autoclear) == on)
+			gwr;
+		gvp(0.0, 1.0, 0.1, 1.0, 1.0);
+		pen(2);
+		// The last two numbers are the field range; 0, 0 would round the axis up past the data.
+		gplot("1", nout, rl_gx, rl_gy, "", "Relative Illumination", gxlab, y, y, scn, 0.0, 1.0, 0.0, rl_ofd[nout - 1]);
+		line_style(sol);
+		if (char_pref(glab))
+		{
+			pen(1);
+			str1[0] = str2[0] = '\0';
+			sprintf(str3, "RELATIVE ILLUMINATION");
+			draw_title_block(str1, str2, str3);
+		}
+		gshow;
+		stp(outp, on);
+	}
+
+	// ---- restore -------------------------------------------------------------------
+	if (rl_wf)
+	{
+		fclose(rl_fh);
+		printf("\nrelillum: report in %s\n", RL_REPORT);
+	}
+	stp(outp, off);
+	if (apck_sav)
+		apck(on);
+	else
+		apck(off);
+	wav(wvn_sav);
+	sbr(rl_row, 6, 1e20);
+	trr(fby_sav, fbx_sav, fbz_sav, fyrf_sav, fxrf_sav);
+	sbr(-rl_row, 0);
+	if (outp_sav)
+		stp(outp, on);
+	else
+		stp(outp, off);
+}
+

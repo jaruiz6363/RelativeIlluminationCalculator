@@ -177,6 +177,15 @@ the ray density reduces it only slowly. On the vignetted Cooke triplet the ZPL m
 OpticStudio rays, but with the pupil edge found by bisection instead of counted - landed within
 2e-4 of `ricalc` (its earlier radial-search version, 2026-09-22).
 
+## Against OSLO
+
+`ccl/relillum.ccl` runs the forward method inside OSLO, on OSLO's own rays, and plots RI against
+field (see [ccl/README.md](ccl/README.md)). OSLO EDU has no relative illumination of its own. On
+this repository's test lenses exported to OSLO - the Kingslake double Gauss, the vignetted Cooke
+triplet, the 35° Topogon, the paraboloidal mirror, and the ideal lenses with a curved image or a
+curved object - it agrees with `ricalc` to every digit printed, at about 0.4 s a field. On the ideal
+lenses at infinity the agreement is 1e-4, because OSLO's perfect lens obeys the sine condition.
+
 ## Against Optiland
 
 This cross-check is optional; everything else in `ricalc` runs without Python. To use it, run

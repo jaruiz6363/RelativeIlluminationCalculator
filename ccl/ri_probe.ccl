@@ -1,0 +1,418 @@
+/**********************************************************************
+* cmd ri_probe - finds out how OSLO's ray trace behaves, for relillum
+*
+* Phase 0 of the relative illumination CCL. It measures nothing about
+* the lens; it prints what OSLO's commands return, so that relillum can
+* be written against facts rather than guesses. The manuals leave these
+* open:
+*
+*   1. what trr and trace_ray/tra put in the spreadsheet buffer, row by
+*      row and column by column;
+*   2. how a ray blocked by a checked aperture differs from a ray that
+*      fails (misses a surface, total internal reflection);
+*   3. whether FY, FX = 1 lands on the rim of the real stop, and whether
+*      FY, FX beyond 1 are traced or refused - in both ray aiming modes;
+*   4. what sag returns (the surface normal, needed at the image);
+*   5. how long one ray takes.
+*
+* Run it with a lens loaded (KingslakeDG.len), with no arguments:
+*
+*   ri_probe
+*
+* then run it again with wide-angle ray aiming turned on. The report goes
+* to a text file, not the text window: ccl/ri_probe_default.txt in this
+* repository, or ccl/ri_probe_wide.txt when wide-angle aiming is on. The
+* window only says where it went. It restores aperture checking, the
+* text output setting, the error handler and the reference ray when it
+* finishes.
+*
+* Only calls that OSLO's own EDU code makes are used, in the forms it
+* uses them, except one: trace_ray(ful, loc, all, ...) in section 5,
+* which is the form relillum most wants. If the file will not compile,
+* the message will say so.
+**********************************************************************/
+
+static int    rip_err;          // set by the error handler
+static int    rip_errno;        // the error number it saw
+static int    rip_row;          // spreadsheet buffer row saved before a trace
+static int    rip_count;        // sbcount() after the trace
+static double rip_buf[64][8];   // the buffer as the trace left it
+static int    rip_nclr;         // rows cleared (and captured)
+static int    rip_f;            // the output file
+
+void
+rip_eh(void)
+{
+	rip_errno = errno;
+	errno = 0;
+	rip_err = 1;
+}
+
+// Before a trace: printed output off, buffer cleared to a sentinel, error flag down.
+static cmd
+rip_begin(int nclear)
+{
+	if (nclear > 64)
+		nclear = 64;
+	rip_nclr = nclear;
+	rip_err = 0;
+	rip_errno = 0;
+	stp(outp, off);
+	rip_row = sbrow;
+	sbr(rip_row, nclear, 1e20);
+}
+
+// After a trace: copy what it left, give the buffer back, printed output on.
+static cmd
+rip_end()
+{
+	int ir, ic;
+
+	rip_count = sbcount();
+	for (ir = 0; ir < rip_nclr; ir++)
+		for (ic = 0; ic < 8; ic++)
+			rip_buf[ir][ic] = ssb(ir + 1, ic + 1);
+	sbr(-rip_row, 0);
+	stp(outp, on);
+}
+
+// Print the captured buffer, row by row; "." is a cell the trace did not write.
+static cmd
+rip_dump()
+{
+	int ir, ic, last;
+
+	fprintf(rip_f, "    sbcount %d, error flag %d, errno %d\n", rip_count, rip_err, rip_errno);
+	last = -1;
+	for (ir = 0; ir < rip_nclr; ir++)
+		for (ic = 0; ic < 8; ic++)
+			if (rip_buf[ir][ic] < 0.99e20)
+				last = ir;
+	for (ir = 0; ir <= last; ir++)
+	{
+		fprintf(rip_f, "    row %2d:", ir + 1);
+		for (ic = 0; ic < 8; ic++)
+		{
+			if (rip_buf[ir][ic] > 0.99e20)
+				fprintf(rip_f, " %14s", ".");
+			else
+				fprintf(rip_f, " %14.8g", rip_buf[ir][ic]);
+		}
+		fprintf(rip_f, "\n");
+	}
+}
+
+// The last surface a standard trace (with surface numbers) reached: the largest column 7.
+static int
+rip_last_srf()
+{
+	int ir, last;
+
+	last = -1;
+	for (ir = 0; ir < rip_nclr; ir++)
+		if (rip_buf[ir][6] < 0.99e20)
+			if (rip_buf[ir][6] > last)
+				last = rint(rip_buf[ir][6]);
+	return (last);
+}
+
+// The captured row whose column 7 is surface s, or -1.
+static int
+rip_row_of(int rip_srf)
+{
+	int ir, found;
+
+	found = -1;
+	for (ir = 0; ir < rip_nclr; ir++)
+		if (rip_buf[ir][6] < 0.99e20)
+			if (rint(rip_buf[ir][6]) == rip_srf)
+				found = ir;
+	return (found);
+}
+
+cmd
+ri_probe()
+// kwd:  relative illumination, probe
+// cat:  analysis
+{
+	int    i, n, ir, last, nrays, wvn;
+	char   apck_sav, outp_sav;
+	char   err_hdl_sav[50];
+	char   path[120];
+	double fby_sav, fbx_sav, fbz_sav, fyrf_sav, fxrf_sav;
+	double fy, fx, t0, t1;
+	double fys[8], fbys[3];
+
+	outp_sav = char_pref(outp);
+	apck_sav = apck;
+	fby_sav  = Trr_fby;
+	fbx_sav  = Trr_fbx;
+	fbz_sav  = Trr_fbz;
+	fyrf_sav = Trr_fyrf;
+	fxrf_sav = Trr_fxrf;
+	if (warm)
+		strcpy(path, "C:/GIT/RelativeIlluminationCalculator/ccl/ri_probe_wide.txt");
+	else
+		strcpy(path, "C:/GIT/RelativeIlluminationCalculator/ccl/ri_probe_default.txt");
+	if ((rip_f = fopen(path, "wt")) <= 0)
+	{
+		printf("ri_probe: cannot open %s for writing\n", path);
+		return;
+	}
+	printf("ri_probe: writing %s ...\n", path);
+	strcpy(err_hdl_sav, error_handler);
+	install_error_handler("rip_eh");
+	wvn = +wav + 1;
+	stp(outp, on);
+
+	// ---- 1. System ------------------------------------------------------------------
+	fprintf(rip_f, "\n*RI_PROBE 1. SYSTEM\n");
+	fprintf(rip_f, "    ims %d  ast %d  rfs %d  raim %d  warm %d  apck %d  afo %d\n",
+		ims, ast, rfs, raim, warm, apck, afo);
+	fprintf(rip_f, "    th[0] %.10g  ebr %.10g  ang %.10g  obh %.10g  uni %.10g\n", th[0], +ebr, +ang, +obh, uni);
+	fprintf(rip_f, "    wavelength number %d  numw %d  wv %.10g\n", wvn, numw, wv[wvn]);
+	fprintf(rip_f, "    srf        cv            th            ap   aptyp gltyp srftyp numsap   index after\n");
+	for (i = 0; i <= ims; i++)
+		fprintf(rip_f, "    %3d %13.8g %13.8g %13.8g %6d %5d %6d %6d %13.8g\n",
+			i, cv[i], th[i], ap[i], aptyp[i], gltyp[i], srftyp[i], numsap[i], rn[i][wvn]);
+
+	// ---- 2. Reference ray -----------------------------------------------------------
+	fprintf(rip_f, "\n*RI_PROBE 2. REFERENCE RAY trr(FBY, 0, 0, 0, 0)\n");
+	fbys[0] = 0.0;
+	fbys[1] = 0.5;
+	fbys[2] = 1.0;
+	for (i = 0; i < 3; i++)
+	{
+		rip_begin(6);
+		trr(fbys[i], 0.0, 0.0, 0.0, 0.0);
+		rip_end();
+		fprintf(rip_f, "  FBY %.10g  (Trr_fby now %.10g)\n", fbys[i], Trr_fby);
+		rip_dump();
+	}
+
+	// ---- 3. Standard trace, all surfaces, surface numbers ---------------------------
+	fprintf(rip_f, "\n*RI_PROBE 3. trace_ray(std, loc, all, FY, FX, yes) at FBY 1, apck on\n");
+	apck(on);
+	rip_begin(6);
+	trr(1.0, 0.0, 0.0, 0.0, 0.0);
+	rip_end();
+	rip_begin(2*ims + 4);
+	trace_ray(std, loc, all, 0.0, 0.0, yes);
+	rip_end();
+	fprintf(rip_f, "  FY 0, FX 0\n");
+	rip_dump();
+	rip_begin(2*ims + 4);
+	trace_ray(std, loc, all, 1.0, 0.0, yes);
+	rip_end();
+	fprintf(rip_f, "  FY 1, FX 0\n");
+	rip_dump();
+
+	// ---- 4. Full trace, all surfaces (eval_aldis form) ------------------------------
+	fprintf(rip_f, "\n*RI_PROBE 4. tra(ful, all, FY, FX) at FBY 1, FY 1, FX 0\n");
+	rip_begin(2*ims + 4);
+	tra(ful, all, 1.0, 0.0);
+	rip_end();
+	rip_dump();
+
+	// ---- 5. Full trace, all surfaces, surface numbers (the untested form) -----------
+	fprintf(rip_f, "\n*RI_PROBE 5. trace_ray(ful, loc, all, FY, FX, yes) at FBY 1, FY 1, FX 0\n");
+	rip_begin(2*ims + 4);
+	trace_ray(ful, loc, all, 1.0, 0.0, yes);
+	rip_end();
+	rip_dump();
+
+	// ---- 6. Full trace, one surface (graph_reciplr form) ----------------------------
+	fprintf(rip_f, "\n*RI_PROBE 6. trace_ray(ful, loc, srf, FY, FX, 0, 0, yes) at FBY 1, FY 1, FX 0\n");
+	rip_begin(6);
+	trace_ray(ful, loc, srf, 1.0, 0.0, 0, 0, yes);
+	rip_end();
+	rip_dump();
+
+	// ---- 7. Where FY, FX = 1 lands on the stop --------------------------------------
+	fprintf(rip_f, "\n*RI_PROBE 7. PUPIL EDGE ON THE STOP, apck off (stop radius ap[ast] = %.10g)\n", ap[ast]);
+	fprintf(rip_f, "      FBY    FY    FX   last srf      y at stop      x at stop   r/ap[ast]\n");
+	apck(off);
+	for (i = 0; i < 3; i++)
+	{
+		rip_begin(6);
+		trr(fbys[i], 0.0, 0.0, 0.0, 0.0);
+		rip_end();
+		for (n = 0; n < 3; n++)
+		{
+			fy = 1.0;
+			fx = 0.0;
+			if (n == 1)
+				fy = -1.0;
+			if (n == 2)
+			{
+				fy = 0.0;
+				fx = 1.0;
+			}
+			rip_begin(2*ims + 4);
+			trace_ray(std, loc, all, fy, fx, yes);
+			rip_end();
+			last = rip_last_srf();
+			ir = rip_row_of(ast);
+			if (ir < 0)
+				fprintf(rip_f, "    %5.2f %5.2f %5.2f   %8d   (no row for the stop; error flag %d, errno %d)\n",
+					fbys[i], fy, fx, last, rip_err, rip_errno);
+			else
+				fprintf(rip_f, "    %5.2f %5.2f %5.2f   %8d %14.8g %14.8g %11.6f\n", fbys[i], fy, fx, last,
+					rip_buf[ir][0], rip_buf[ir][1],
+					sqrt(rip_buf[ir][0]*rip_buf[ir][0] + rip_buf[ir][1]*rip_buf[ir][1])/ap[ast]);
+		}
+	}
+
+	// ---- 8. Beyond the unit circle --------------------------------------------------
+	fprintf(rip_f, "\n*RI_PROBE 8. FY BEYOND 1 at FBY 1, FX 0, apck off\n");
+	fprintf(rip_f, "       FY   last srf   error flag   errno     y at stop   r/ap[ast]\n");
+	fys[0] = 1.02;
+	fys[1] = 1.1;
+	fys[2] = 1.3;
+	fys[3] = 1.6;
+	fys[4] = 2.0;
+	fys[5] = 3.0;
+	rip_begin(6);
+	trr(1.0, 0.0, 0.0, 0.0, 0.0);
+	rip_end();
+	for (n = 0; n < 6; n++)
+	{
+		rip_begin(2*ims + 4);
+		trace_ray(std, loc, all, fys[n], 0.0, yes);
+		rip_end();
+		last = rip_last_srf();
+		ir = rip_row_of(ast);
+		if (ir < 0)
+			fprintf(rip_f, "    %5.2f   %8d   %10d   %5d\n", fys[n], last, rip_err, rip_errno);
+		else
+			fprintf(rip_f, "    %5.2f   %8d   %10d   %5d %13.8g %11.6f\n", fys[n], last, rip_err, rip_errno,
+				rip_buf[ir][0], fabs(rip_buf[ir][0])/ap[ast]);
+	}
+
+	// ---- 9. Vignetting: the same rays with aperture checking on and off -------------
+	fprintf(rip_f, "\n*RI_PROBE 9. VIGNETTING SCAN at FBY 1, FX 0: last surface reached (ims = %d)\n", ims);
+	fprintf(rip_f, "       FY   apck off: last  err   rows    apck on: last  err  errno  rows  ssb(1,1)\n");
+	rip_begin(6);
+	trr(1.0, 0.0, 0.0, 0.0, 0.0);
+	rip_end();
+	for (n = -10; n <= 10; n++)
+	{
+		fy = 0.1*n;
+		apck(off);
+		rip_begin(2*ims + 4);
+		trace_ray(std, loc, all, fy, 0.0, yes);
+		rip_end();
+		fprintf(rip_f, "    %5.2f   %14d %4d %6d", fy, rip_last_srf(), rip_err, rip_count);
+		apck(on);
+		rip_begin(2*ims + 4);
+		trace_ray(std, loc, all, fy, 0.0, yes);
+		rip_end();
+		if (rip_buf[0][0] > 0.99e20)
+			fprintf(rip_f, "   %14d %4d %6d %5d  (unwritten)\n", rip_last_srf(), rip_err, rip_errno, rip_count);
+		else
+			fprintf(rip_f, "   %14d %4d %6d %5d  %.10g\n", rip_last_srf(), rip_err, rip_errno, rip_count, rip_buf[0][0]);
+	}
+	fprintf(rip_f, "  The EDU short form trace_ray(FY, FX), as optim_tops_edu uses it, at FY 1:\n");
+	rip_begin(6);
+	trace_ray(1.0, 0.0);
+	rip_end();
+	rip_dump();
+	apck(off);
+
+	// ---- 10. Surface sag and normal -------------------------------------------------
+	fprintf(rip_f, "\n*RI_PROBE 10. sag(1, 5, 0): surface 1 at y = 5 (cv[1] = %.10g, cc[1] = %.10g)\n", cv[1], cc[1]);
+	rip_begin(4);
+	sag(1, 5.0, 0.0);
+	rip_end();
+	fprintf(rip_f, "    c1 after sag: %.10g\n", c1);
+	rip_dump();
+
+	// ---- 11. Speed ------------------------------------------------------------------
+	fprintf(rip_f, "\n*RI_PROBE 11. SPEED at FBY 0.7, a 32 x 32 grid inside the unit circle\n");
+	rip_begin(6);
+	trr(0.7, 0.0, 0.0, 0.0, 0.0);
+	rip_end();
+	nrays = 0;
+	t0 = time();
+	for (i = -16; i <= 16; i++)
+		for (n = -16; n <= 16; n++)
+			if (i*i + n*n <= 256)
+			{
+				rip_begin(2*ims + 4);
+				trace_ray(std, loc, all, i/16.0, n/16.0, yes);
+				rip_end();
+				nrays++;
+			}
+	t1 = time();
+	fprintf(rip_f, "    trace_ray std all: %d rays in %.10g ms, %.10g ms a ray (with the buffer copied)\n",
+		nrays, t1 - t0, (t1 - t0)/nrays);
+	nrays = 0;
+	t0 = time();
+	for (i = -16; i <= 16; i++)
+		for (n = -16; n <= 16; n++)
+			if (i*i + n*n <= 256)
+			{
+				rip_begin(2*ims + 4);
+				tra(ful, all, i/16.0, n/16.0);
+				rip_end();
+				nrays++;
+			}
+	t1 = time();
+	fprintf(rip_f, "    tra ful all:       %d rays in %.10g ms, %.10g ms a ray (with the buffer copied)\n",
+		nrays, t1 - t0, (t1 - t0)/nrays);
+
+	// ---- 12. Rays that fail ---------------------------------------------------------
+	// Far enough out a ray misses a surface (surface 4 of Kingslake has a radius of 17.34).
+	// Does that raise an error, or leave the buffer empty like a blocked ray?
+	fprintf(rip_f, "\n*RI_PROBE 12. RAYS THAT FAIL at FBY 1, FX 0\n");
+	fprintf(rip_f, "       FY   apck   last srf   error flag   errno   rows   ssb(1,1)\n");
+	rip_begin(6);
+	trr(1.0, 0.0, 0.0, 0.0, 0.0);
+	rip_end();
+	fys[0] = 3.0;
+	fys[1] = 4.0;
+	fys[2] = 5.0;
+	fys[3] = 7.0;
+	fys[4] = 10.0;
+	for (i = 0; i < 2; i++)
+	{
+		if (i == 0)
+			apck(off);
+		else
+			apck(on);
+		for (n = 0; n < 5; n++)
+		{
+			rip_begin(2*ims + 4);
+			trace_ray(std, loc, all, fys[n], 0.0, yes);
+			rip_end();
+			if (rip_buf[0][0] > 0.99e20)
+				fprintf(rip_f, "    %5.1f   %4d   %8d   %10d   %5d   %4d   (unwritten)\n",
+					fys[n], i, rip_last_srf(), rip_err, rip_errno, rip_count);
+			else
+				fprintf(rip_f, "    %5.1f   %4d   %8d   %10d   %5d   %4d   %.10g\n",
+					fys[n], i, rip_last_srf(), rip_err, rip_errno, rip_count, rip_buf[0][0]);
+		}
+	}
+	fprintf(rip_f, "  The ray at FY 5, apck off, in full:\n");
+	apck(off);
+	rip_begin(2*ims + 4);
+	trace_ray(std, loc, all, 5.0, 0.0, yes);
+	rip_end();
+	rip_dump();
+
+	// ---- Restore --------------------------------------------------------------------
+	fprintf(rip_f, "\n*RI_PROBE done. Aperture checking, output, error handler and reference ray restored.\n");
+	if (apck_sav)
+		apck(on);
+	else
+		apck(off);
+	stp(outp, off);
+	trr(fby_sav, fbx_sav, fbz_sav, fyrf_sav, fxrf_sav);
+	install_error_handler(err_hdl_sav);
+	if (outp_sav)
+		stp(outp, on);
+	else
+		stp(outp, off);
+	fclose(rip_f);
+	printf("ri_probe: done, output in %s\n", path);
+}
