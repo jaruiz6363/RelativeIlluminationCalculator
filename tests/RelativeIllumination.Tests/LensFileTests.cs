@@ -98,7 +98,8 @@ public class LensFileTests
     {
         // NA = n sin(theta). At NA 0.5 the marginal ray leaves the object at 30 degrees and meets
         // the entrance pupil, at the lens 200 away, at 200 tan 30. Taking NA/n itself as the slope
-        // (sin for tan) gave 100, a pupil 13 % small; OSLO and LensHH-LT take tan.
+        // (sin for tan) gave 100, a pupil 13 % small; OSLO and LensHH-LT take tan, and OpticStudio
+        // reports an entrance pupil diameter of 230.9401 for this lens (2026-09-25).
         var sys = Designs.IdealLensStopAtLens(100, 120, 200, 200);
         sys.Aperture = new Core.Models.Aperture(Core.Enums.ApertureType.ObjectSpaceNA, 0.5);
         Assert.Equal(2.0 * 200.0 * Math.Tan(Math.PI / 6.0), Designs.InAir(sys).Paraxial.Epd, 9);
