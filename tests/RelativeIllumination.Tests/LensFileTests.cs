@@ -238,6 +238,61 @@ THI 0.000000000
         finally { File.Delete(path); }
     }
 
+    // A .seq in the shape Code V saves one: several commands to a line, a continued line, an
+    // asphere's terms under ASP, Code V's 0.1E+14 infinity, a fictitious glass, a private glass,
+    // an object NA with object heights, and a decenter this program does not model.
+    private const string CodeVStyle = @"RDM;LEN       ""VERSION: 10.4""
+TITLE 'DOUBLET'
+NAO   0.05
+DIM   M
+WL    656.3 587.6 486.1
+REF   2
+YOB   0.0 5.0 &
+      10.0
+SO    0.0 300
+S     50.0 5.0 516800.641700 ; CIR 12.5
+  STO
+S     -50.0 2.0 'LHHP'
+  ASP
+  K  -1.0
+  A  1.0E-05 ; B -2.0E-08 ! a comment
+S     -200.0 95.0
+  XDE 1.5
+SI    0.0 0.0
+PRV
+PWL 656.3 587.6 486.1
+'LHHP' 1.61 1.62 1.63
+END
+GO
+";
+
+    [Fact]
+    public void ReadsWhatCodeVWrites()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"codev_{Guid.NewGuid():N}.seq");
+        File.WriteAllText(path, CodeVStyle);
+        try
+        {
+            var sys = IO.LensFile.Read(path);
+            Assert.Equal(Core.Enums.ApertureType.ObjectSpaceNA, sys.Aperture.Type);   // NAO
+            Assert.Equal(Core.Enums.FieldType.ObjectHeight, sys.FieldType);           // YOB
+            Assert.Equal(10.0, sys.Fields.Max(f => f.Y), 12);                          // continued with &
+            Assert.True(sys.Wavelengths[1].IsPrimary);
+            Assert.True(sys.Surfaces[1].ModelIndexEnabled);                           // 516800.641700
+            Assert.Equal(1.5168, sys.Surfaces[1].ModelNd, 12);
+            Assert.Equal(64.17, sys.Surfaces[1].ModelVd, 9);
+            Assert.Equal(12.5, sys.Surfaces[1].SemiDiameter, 12);                     // CIR after the ;
+            Assert.True(sys.Surfaces[1].IsStop);
+            Assert.True(sys.Surfaces[2].ModelIndexEnabled);                           // the PRV glass
+            Assert.Equal(1.62, sys.Surfaces[2].ModelNd, 9);
+            Assert.Equal(-1.0, sys.Surfaces[2].Conic, 12);
+            Assert.Equal(1.0e-5, sys.Surfaces[2].AsphericCoefficients[1], 1e-20);     // A under ASP
+            Assert.Equal(-2.0e-8, sys.Surfaces[2].AsphericCoefficients[2], 1e-22);
+            Assert.Contains("XDE", sys.Notes);                                         // said, not dropped
+        }
+        finally { File.Delete(path); }
+    }
+
     [Fact]
     public void CheckedAperturesVignette()
     {
