@@ -1,0 +1,29 @@
+// OSLO 5.10
+// Exported from LensHH-LT
+LEN NEW "Ideal lens, obscuration 20 mm in"
+SNO1 "Ideal lens, obscuration 20 mm in front"
+UNI 1.0
+EBR 10
+ANG 30
+// SRF 0
+  TH 1.0000000E+020
+NXT // SRF 1
+  AP 21.54700538
+  APN 1
+  AY1 A -4
+  AY2 A 4
+  AX1 A -4
+  AX2 A 4
+  ATP A 1
+  AAC A 2
+  TH 20
+NXT // SRF 2
+  PFL 100
+  AST
+  TH 100
+NXT // SRF 3
+  AP 57.73502692
+  TH 0
+WV  0.55000
+WW  1
+END 3

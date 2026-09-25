@@ -1,0 +1,20 @@
+// OSLO 5.10
+// Exported from LensHH-LT
+LEN NEW "Ideal lens, curved image R"
+SNO1 "Ideal lens, curved image R 200"
+UNI 1.0
+EBR 10
+ANG 30
+// SRF 0
+  TH 1.0000000E+020
+NXT // SRF 1
+  PFL 100
+  AST
+  TH 100
+NXT // SRF 2
+  RD 200
+  AP 65.11623603
+  TH 0
+WV  0.55000
+WW  1
+END 2

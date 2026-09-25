@@ -1,0 +1,21 @@
+// OSLO 5.10
+// Exported from LensHH-LT
+LEN NEW "Ideal lens, curved object surfac"
+SNO1 "Ideal lens, curved object surface"
+UNI 1.0
+NAO 0.04993761694389224
+OBH 60
+// SRF 0
+  RD -300
+  TH 2.0000000E+002
+NXT // SRF 1
+  PFL 100
+  PFM -1
+  AST
+  TH 200
+NXT // SRF 2
+  AP 58.52926462
+  TH 0
+WV  0.55000
+WW  1
+END 2

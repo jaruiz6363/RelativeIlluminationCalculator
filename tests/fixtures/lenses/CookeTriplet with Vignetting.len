@@ -1,0 +1,43 @@
+// OSLO 5.10
+// Exported from LensHH-LT
+LEN NEW "Cooke Triplet with Vignetting"
+SNO1 "Cooke Triplet with Vignetting"
+UNI 1.0
+EBR 6.25
+ANG 20
+// SRF 0
+  TH 1.0000000E+020
+NXT // SRF 1
+  RD 21.25
+  GLA SK16
+  AP CHK 6.5
+  TH 2
+NXT // SRF 2
+  RD -158.65
+  AP 6.278765102
+  TH 6
+NXT // SRF 3
+  RD -20.25
+  GLA F4
+  AP CHK 5
+  TH 1
+NXT // SRF 4
+  RD 19.3
+  AST
+  AP CHK 5
+  TH 6
+NXT // SRF 5
+  RD 141.25
+  GLA SK16
+  AP CHK 6.5
+  TH 2
+NXT // SRF 6
+  RD -17.285
+  AP CHK 6.5
+  TH 42.95
+NXT // SRF 7
+  AP 18.33358512
+  TH 0
+WV  0.58756 0.48613 0.65627
+WW  1 1 1
+END 7

@@ -1,0 +1,22 @@
+// OSLO 5.10
+// Exported from LensHH-LT
+LEN NEW "Paraboloidal mirror"
+SNO1 "Paraboloidal mirror"
+UNI 1.0
+EBR 25
+ANG 0.5
+// SRF 0
+  TH 1.0000000E+020
+NXT // SRF 1
+  RD -400
+  RFH
+  AST
+  CC -1.0000000E+000
+  AP CHK 25
+  TH -200
+NXT // SRF 2
+  AP 1.767870076
+  TH 0
+WV  0.55000
+WW  1
+END 2
