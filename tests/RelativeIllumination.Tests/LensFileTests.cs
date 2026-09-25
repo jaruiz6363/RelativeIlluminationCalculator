@@ -167,6 +167,77 @@ END  5
         finally { File.Delete(path); }
     }
 
+    // In the line forms of the lens files that ship with Optalix: a fictitious glass and a PRI glass
+    // (Eye/EYE_NEW_CHROMATIC.OTX), a clipping aperture (FH 1), RAIM 2, and a lens module - the
+    // 1/100 mm pair of SUT L surfaces, as Gross-HOS/Misc/45-132_Chromat-with-tube-lens.otx writes one.
+    private const string OptalixStyle = @"VERS 11.82
+RAIM  2
+EPD  10.0000
+WL   0.54600     0.48600     0.65000
+WTW  100 100 100
+REF    1
+FTYP    1
+NFLD    2
+FLD    1   0.000000000       0.000000000      100  1        2594861
+FLD    2   0.000000000       2.000000000      100  1        2594861
+SUR   0
+SUT S
+CUY 0.0000000000000
+THI  0.1000000000E+21
+SUR   1
+SUT S
+CUY  0.0100000000000
+THI   5.000000000
+GLA 613369
+APE  1   10.00000000       10.00000000      0.000000000      0.000000000      0.000000000        1   0   0   1
+FH    1  1
+SUR   2
+SUT S
+CUY -0.0100000000000
+THI   2.000000000
+PRI   1.336000000       1.336000000       1.336000000
+APE  1   10.00000000       10.00000000      0.000000000      0.000000000      0.000000000        1   0   0   1
+SUR   3
+SUT L
+CUY 0.0000000000000
+THI 0.000000000
+LMOD  0.1000000000E-01   0.000000000       0.000000000       0.000000000       0.000000000
+STO
+SUR   4
+SUT L
+CUY 0.0000000000000
+THI 100.0000000
+LMOD   0.000000000       0.000000000       0.000000000       0.000000000       0.000000000
+SUR   5
+SUT S
+CUY 0.0000000000000
+THI 0.000000000
+";
+
+    [Fact]
+    public void ReadsWhatOptalixWrites()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"optalix_{Guid.NewGuid():N}.otx");
+        File.WriteAllText(path, OptalixStyle);
+        try
+        {
+            var sys = IO.LensFile.Read(path);
+            Assert.Equal(Core.Enums.RayAimingMode.Real, sys.RayAiming);             // RAIM 2: the real stop
+            Assert.True(sys.Surfaces[1].ModelIndexEnabled);                         // GLA 613369
+            Assert.Equal(1.613, sys.Surfaces[1].ModelNd, 12);
+            Assert.Equal(36.9, sys.Surfaces[1].ModelVd, 12);
+            Assert.Equal(Core.Enums.SemiDiameterMode.Fixed, sys.Surfaces[1].SemiDiameterMode);  // FH 1
+            Assert.Equal(Core.Enums.SemiDiameterMode.Auto, sys.Surfaces[2].SemiDiameterMode);   // no FH
+            Assert.True(sys.Surfaces[2].ModelIndexEnabled);                         // PRI
+            Assert.Equal(5, sys.Surfaces.Count);                                    // the L pair is one lens
+            Assert.Equal(Core.Enums.SurfaceType.Paraxial, sys.Surfaces[3].Type);
+            Assert.Equal(100.0, sys.Surfaces[3].FocalLength, 9);                   // LMOD is a power
+            Assert.Equal(100.0, sys.Surfaces[3].Thickness, 12);
+            Assert.True(sys.Surfaces[3].IsStop);
+        }
+        finally { File.Delete(path); }
+    }
+
     [Fact]
     public void CheckedAperturesVignette()
     {
