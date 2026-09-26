@@ -91,6 +91,32 @@ public class OptilandMaterialTests : IDisposable
         Assert.DoesNotContain("not in the loaded catalogs", sys.Notes);
     }
 
+    /// <summary>
+    /// Optiland's even-asphere <c>coefficients</c> start at r^2 (measured in Optiland 0.6.2), as
+    /// this program's <c>AsphericCoefficients</c> do. The reader started them at r^4, so every
+    /// term came in one power too high.
+    /// </summary>
+    [Fact]
+    public void AnEvenAsphereLandsInTheRightCoefficientSlots()
+    {
+        string json = "{\"aperture\": {\"type\": \"EPD\", \"value\": 10.0}, \"surface_group\": {\"surfaces\": [" +
+            "{\"type\": \"ObjectSurface\", \"geometry\": {\"type\": \"Plane\", \"cs\": {\"z\": -Infinity}, \"radius\": Infinity}, \"material_post\": {\"type\": \"IdealMaterial\", \"index\": 1.0}}, " +
+            "{\"type\": \"Surface\", \"geometry\": {\"type\": \"EvenAsphere\", \"cs\": {\"z\": 0}, \"radius\": 50.0, \"conic\": -0.5, " +
+            "\"coefficients\": [0.0, 1e-07, 2e-11, 3e-15]}, \"material_post\": " + Glass("N-BK7", "lenshh-schott") + ", \"is_stop\": true}, " +
+            Surface(5, "{\"type\": \"IdealMaterial\", \"index\": 1.0}") + "]}}";
+        string path = Path.Combine(_dir, "lens.json");
+        File.WriteAllText(path, json);
+
+        var s = OptilandReader.Read(path, Catalogs()).Surfaces[1];
+
+        Assert.Equal(-0.5, s.Conic, 12);
+        Assert.Equal(0.0, s.AsphericCoefficients[0]);          // r^2
+        Assert.Equal(1e-7, s.AsphericCoefficients[1]);         // r^4
+        Assert.Equal(2e-11, s.AsphericCoefficients[2]);        // r^6
+        Assert.Equal(3e-15, s.AsphericCoefficients[3]);        // r^8
+        Assert.Equal(0.02, s.VertexCurvature, 12);             // no r^2 term to add to it
+    }
+
     [Fact]
     public void AGlassTheCatalogsLackIsReported()
     {
