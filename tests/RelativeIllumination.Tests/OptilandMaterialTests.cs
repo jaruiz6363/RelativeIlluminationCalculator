@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using RelativeIllumination.Core.Enums;
 using RelativeIllumination.Core.Glass;
 using RelativeIllumination.IO;
 using Xunit;
@@ -115,6 +116,42 @@ public class OptilandMaterialTests : IDisposable
         Assert.Equal(2e-11, s.AsphericCoefficients[2]);        // r^6
         Assert.Equal(3e-15, s.AsphericCoefficients[3]);        // r^8
         Assert.Equal(0.02, s.VertexCurvature, 12);             // no r^2 term to add to it
+    }
+
+    /// <summary>
+    /// A finite object, laid out as Optiland writes one: the object at z = -d, the first surface
+    /// at 0, an object-space NA. Every object used to be read as at infinity, and objectNA as an
+    /// EPD of the same number.
+    /// </summary>
+    [Fact]
+    public void AFiniteObjectAndAnObjectNaAreReadAsOptilandWritesThem()
+    {
+        string json = "{\"aperture\": {\"type\": \"objectNA\", \"value\": 0.05}, \"surface_group\": {\"surfaces\": [" +
+            "{\"type\": \"ObjectSurface\", \"geometry\": {\"type\": \"Plane\", \"cs\": {\"z\": -200.0}, \"radius\": Infinity}, \"material_post\": {\"type\": \"IdealMaterial\", \"index\": 1.0}}, " +
+            Surface(0, Glass("N-BK7", "lenshh-schott")) + ", " +
+            Surface(5, "{\"type\": \"IdealMaterial\", \"index\": 1.0}") + ", " +
+            Surface(85, "{\"type\": \"IdealMaterial\", \"index\": 1.0}") + "]}}";
+        string path = Path.Combine(_dir, "finite.json");
+        File.WriteAllText(path, json);
+
+        var sys = OptilandReader.Read(path, Catalogs());
+
+        Assert.Equal(200.0, sys.Surfaces[0].Thickness, 12);
+        Assert.Equal(ApertureType.ObjectSpaceNA, sys.Aperture.Type);
+        Assert.Equal(0.05, sys.Aperture.Value, 12);
+    }
+
+    /// <summary>And an object at infinity, as Optiland writes it (z = -inf), stays there.</summary>
+    [Fact]
+    public void AnObjectAtInfinityStaysThere()
+    {
+        string json = "{\"aperture\": {\"type\": \"EPD\", \"value\": 10.0}, \"surface_group\": {\"surfaces\": [" +
+            "{\"type\": \"ObjectSurface\", \"geometry\": {\"type\": \"Plane\", \"cs\": {\"z\": -Infinity}, \"radius\": Infinity}, \"material_post\": {\"type\": \"IdealMaterial\", \"index\": 1.0}}, " +
+            Surface(0, Glass("N-BK7", "lenshh-schott")) + ", " + Surface(5, "{\"type\": \"IdealMaterial\", \"index\": 1.0}") + "]}}";
+        string path = Path.Combine(_dir, "infinite.json");
+        File.WriteAllText(path, json);
+
+        Assert.True(double.IsPositiveInfinity(OptilandReader.Read(path, Catalogs()).Surfaces[0].Thickness));
     }
 
     [Fact]
