@@ -90,8 +90,10 @@ namespace RelativeIllumination.IO
                             system.FieldType = FieldType.ObjectAngle;
                             system.Fields.Clear();
                             system.Fields.Add(new Field(0, 1.0));
-                            if (ang > 0)
-                                system.Fields.Add(new Field(ang, 1.0));
+                            // By size, as OBH is below. (A negative angle used to be dropped
+                            // altogether, leaving only the on-axis field.)
+                            if (Math.Abs(ang) > 0)
+                                system.Fields.Add(new Field(Math.Abs(ang), 1.0));
                         }
                         break;
 
