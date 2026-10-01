@@ -17,7 +17,8 @@ namespace RelativeIllumination.Core.RayTrace;
 /// option. A program that launches off-axis rays into the paraxial entrance pupil instead
 /// cannot see the pupil grow or shrink with field, and that growth is the whole of the
 /// Slyusarev effect.</item>
-/// <item>A <b>fixed</b> semi-diameter clips; an automatic one does not, unless the file reduced it
+/// <item>A <b>fixed</b> semi-diameter clips - except on a surface with an obscuration, where it is
+/// the obscuration's drawn size; an automatic one does not, unless the file reduced it
 /// with a clear-aperture percentage below 100, or the caller asks for automatic ones to be
 /// treated as hard (<see cref="ClipAutomatic"/>). An automatic semi-diameter is solved to pass
 /// the beams of the file's own fields, so clipping at it would vignette by definition at
@@ -57,7 +58,11 @@ public sealed class ApertureModel
             {
                 outer = stopRadius;
             }
-            else if (s.SemiDiameter > 0.0)
+            // Not on a surface with an obscuration: there the semi-diameter a file stores is the
+            // obscuration's own drawn size, not an outer aperture. Clipped, it blocked every ray
+            // outside the obstruction as the obstruction blocked every ray inside it (a Maksutov's
+            // secondary spot: DIAM 0.001 fixed, OBSC 2.5).
+            else if (s.SemiDiameter > 0.0 && s.ObscurationRadius <= 0.0)
             {
                 bool reduced = s.ClearAperturePercent > 0.0 && s.ClearAperturePercent < 100.0;
                 if (s.SemiDiameterMode == SemiDiameterMode.Fixed || clipAutomatic || reduced)

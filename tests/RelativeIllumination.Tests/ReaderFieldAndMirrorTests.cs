@@ -104,6 +104,65 @@ SUR   4
         finally { File.Delete(path); }
     }
 
+    // A Maksutov's two hiding places, as its .zmx writes them: a flat air dummy with DIAM 1e-6
+    // fixed and no aperture record (surface 1), and the secondary's spot with DIAM 0.001 fixed and
+    // an obscuration of 2.5 (surface 4). Each blocked every ray.
+    private const string MaksutovLike = @"VERS 190513 80 123457 L123457
+MODE SEQ
+UNIT MM X W X CM MR CPMM
+ENPD 10
+FTYP 0 0 1 1 0 0 0
+YFLN 0
+WAVM 1 0.55 1
+PWAV 1
+SURF 0
+  CURV 0
+  DISZ INFINITY
+SURF 1
+  CURV 0.0 0 0 0 0 """"
+  DISZ 5
+  DIAM 9.9999999700000005e-07 1 0 0 1 """"
+  MEMA 9.9999999700000005e-07 0 0 0 1 """"
+SURF 2
+  STOP
+  CURV 0
+  DISZ 10
+SURF 3
+  CURV 0
+  DISZ 10
+  DIAM 0.00100000005 1 0 0 1 """"
+  MEMA 2.5 0 0 0 1 """"
+  OBSC 0 2.5 0
+SURF 4
+  TYPE PARAXIAL
+  PARM 1 100
+  DISZ 100
+SURF 5
+  CURV 0
+  DISZ 0
+";
+
+    /// <summary>
+    /// A flat air dummy without an aperture record does not clip (a .zmx semi-diameter blocks
+    /// light only through an aperture record), and an obscured surface's fixed semi-diameter is
+    /// the obscuration's drawn size, not an outer aperture.
+    /// </summary>
+    [Fact]
+    public void AMaksutovsHiddenSurfacesDoNotBlockTheBeam()
+    {
+        string path = Temp(MaksutovLike, ".zmx");
+        try
+        {
+            var sys = LensFile.Read(path, Catalog.Value);
+            Assert.Equal(SemiDiameterMode.Auto, sys.Surfaces[1].SemiDiameterMode);
+            var apertures = new ApertureModel(sys, 5.0, clipAutomatic: false);
+            Assert.True(double.IsPositiveInfinity(apertures.Outer(1)), "the dummy does not clip");
+            Assert.True(double.IsPositiveInfinity(apertures.Outer(3)), "the obscured surface has no outer aperture");
+            Assert.Equal(2.5, apertures.Inner(3), 9);                   // its obscuration still blocks
+        }
+        finally { File.Delete(path); }
+    }
+
     /// <summary>A negative OSLO field angle is read by its size; it used to be dropped altogether.</summary>
     [Fact]
     public void ANegativeOsloFieldAngleIsKept()
