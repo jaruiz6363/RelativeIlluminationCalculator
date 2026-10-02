@@ -163,6 +163,50 @@ SURF 5
         finally { File.Delete(path); }
     }
 
+    private static string StopWithClap(double enpd, double clapOuter) => $@"VERS 190513 80 123457 L123457
+MODE SEQ
+UNIT MM X W X CM MR CPMM
+ENPD {enpd.ToString(System.Globalization.CultureInfo.InvariantCulture)}
+FTYP 0 0 1 1 0 0 0
+YFLN 0
+WAVM 1 0.55 1
+PWAV 1
+SURF 0
+  CURV 0
+  DISZ INFINITY
+SURF 1
+  STOP
+  CURV 0
+  DISZ 10
+  CLAP 0 {clapOuter.ToString(System.Globalization.CultureInfo.InvariantCulture)} 0
+SURF 2
+  TYPE PARAXIAL
+  PARM 1 100
+  DISZ 100
+SURF 3
+  CURV 0
+  DISZ 0
+";
+
+    /// <summary>
+    /// The stop's CLAP sets the entrance pupil only when it is smaller than ENPD (a stock lens,
+    /// whose ENPD is the part's full diameter). A larger one - a telescope primary's, CLAP 80
+    /// under ENPD 150 - does not limit the beam, and used to widen the pupil to 160.
+    /// </summary>
+    [Theory]
+    [InlineData(150.0, 80.0, 150.0)]
+    [InlineData(25.4, 11.43, 22.86)]
+    public void TheStopClapOnlyNarrowsThePupil(double enpd, double clapOuter, double expected)
+    {
+        string path = Temp(StopWithClap(enpd, clapOuter), ".zmx");
+        try
+        {
+            var sys = LensFile.Read(path, Catalog.Value);
+            Assert.Equal(expected, sys.Aperture.Value, 9);
+        }
+        finally { File.Delete(path); }
+    }
+
     /// <summary>A negative OSLO field angle is read by its size; it used to be dropped altogether.</summary>
     [Fact]
     public void ANegativeOsloFieldAngleIsKept()

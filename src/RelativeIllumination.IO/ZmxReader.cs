@@ -212,17 +212,17 @@ namespace RelativeIllumination.IO
             }
 
             // Stock-lens EPD override: if Aperture is EPD-type and the stop surface
-            // has a CLAP outer radius defined, replace the ENPD-derived value with
-            // the optical CA diameter (= 2 × CLAP outer radius). Vendor stock-lens
-            // .zmx files set ENPD = mechanical OD (the part's full diameter), but
-            // the lens's effective optical aperture is the smaller CLAP zone. Using
-            // CLAP as the EPD prevents marginal rays from being launched outside
-            // the lens's good optical region (which previously caused rays to
-            // appear "through air" past the lens edge in layout drawings).
+            // has a CLAP outer radius SMALLER than the ENPD radius, the CLAP diameter
+            // becomes the EPD. Vendor stock-lens .zmx files set ENPD = mechanical OD
+            // (the part's full diameter), but the lens's effective optical aperture is
+            // the smaller CLAP zone; launching the ENPD beam would put marginal rays
+            // outside it. A CLAP larger than ENPD (a telescope primary's annulus, CLAP
+            // 26 80 under ENPD 150) does not limit the beam, so ENPD stands - the
+            // override used to widen such a pupil to the CLAP.
             if (system.Aperture.Type == ApertureType.EPD)
             {
                 double stopClapOuter = ExtractStopClapOuter(lines, system.StopSurfaceIndex);
-                if (stopClapOuter > 0)
+                if (stopClapOuter > 0 && stopClapOuter * 2.0 < system.Aperture.Value)
                     system.Aperture = new Aperture(ApertureType.EPD, stopClapOuter * 2.0);
             }
 
